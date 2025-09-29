@@ -19,6 +19,7 @@ description = "Garbled-circuit SNARK verifier using Groth16 (BN254), with reusab
 default = ["tracing_max_level", "tracing_scopes"]
 tracing_max_level = ["tracing/max_level_trace", "tracing/release_max_level_info"]
 tracing_scopes = []
+nightly = ["roaring/simd"]
 
 [dependencies]
 aes = "0.8"
@@ -50,6 +51,13 @@ serde_json = "1.0"
 serde = { version = "1.0.225", features = ["derive"] }
 ark-serialize = "0.5.0"
 
+ahash = "0.8.12"
+ckt = { git = "https://github.com/alpenlabs/ckt", rev = "33a53314" }
+indicatif = "0.18.0"
+lvl = { git = "https://github.com/alpenlabs/ckt", rev = "33a53314" }
+roaring = "0.11.2"
+
+
 [dev-dependencies]
 ark-ec = "0.5.0"
 ark-relations = "0.5.0"
@@ -72,4 +80,3 @@ panic = "abort"       # Faster execution, smaller binary
 [package.metadata.cargo-udeps.ignore]
 # `cargo-husky` is intentionally present for git hooks and should be ignored by udeps
 development = ["cargo-husky"]
-normal = ["aes"]

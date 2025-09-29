@@ -3,6 +3,13 @@ use std::{fmt, num::NonZero};
 use crate::{Gate, WireId, storage::Credits};
 
 mod execute_mode;
+
+mod translate_mode;
+pub use translate_mode::TranslationMode;
+
+mod credit_collection_mode;
+pub use credit_collection_mode::CreditCollectionMode;
+
 pub use execute_mode::{ExecuteMode, OptionalBoolean};
 // Back-compat alias used widely in tests/gadgets
 pub type Execute = crate::circuit::StreamingMode<ExecuteMode>;

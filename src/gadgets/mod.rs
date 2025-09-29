@@ -1,6 +1,7 @@
 pub mod basic;
 pub mod bigint;
 pub mod bn254;
+pub mod g16_dump;
 pub mod groth16;
 
 pub use groth16::{groth16_verify, groth16_verify_compressed};

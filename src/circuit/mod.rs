@@ -20,6 +20,7 @@ pub use offcircuit_param::OffCircuitParam;
 mod component_template_pool;
 pub use component_template_pool::ComponentTemplatePool;
 
+mod slab;
 /// Macro for generating component keys with optional parameters
 ///
 /// # Examples
