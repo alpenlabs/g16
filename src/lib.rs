@@ -1,9 +1,6 @@
-pub mod cac;
-pub mod ciphertext_hasher;
 pub mod circuit;
 mod core;
 pub mod gadgets;
-pub mod hashers;
 mod hw;
 pub mod logging;
 mod math;
@@ -12,15 +9,6 @@ pub mod storage;
 // Re-export the procedural macro
 pub use core::{delta::Delta, gate::Gate, gate_type::GateType, s::S, wire::WireId};
 
-// Re-export EvaluatedWire from mode locality while keeping public path stable
-pub use crate::circuit::modes::EvaluatedWire;
-// Re-export GarbledWire from mode locality while keeping public path stable
-pub use crate::circuit::modes::GarbledWire;
-// Root-level hasher exports
-pub use crate::hashers::{AesNiHasher, Blake3Hasher, GateHasher, HasherKind};
-pub type DefaultHasher = crate::hashers::Blake3Hasher;
-
-pub use ciphertext_hasher::AESAccumulatingHash;
 pub use circuit::CircuitContext;
 pub use circuit_component_macro::component;
 // Publicly re-export commonly used BN254 wire types for examples/binaries
@@ -37,8 +25,6 @@ pub use hw::{hardware_aes_available, warn_if_software_aes};
 pub use logging::init_tracing;
 pub use math::*;
 
-pub use crate::circuit::modes::GarbleMode;
-
 #[cfg(test)]
 pub mod test_utils {
     use rand::SeedableRng;
@@ -48,9 +34,6 @@ pub mod test_utils {
         ChaCha20Rng::seed_from_u64(0)
     }
 }
-
-pub mod cut_and_choose;
-pub mod garbled_groth16;
 
 // All ark-* related items live under this module for clarity
 pub mod ark {
@@ -70,6 +53,3 @@ pub mod ark {
     pub use ark_serialize;
     pub use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
 }
-
-pub use cut_and_choose::groth16 as groth16_cut_and_choose;
-pub use groth16_cut_and_choose::{GarbledInstanceCommit, Garbler, OpenForInstance};

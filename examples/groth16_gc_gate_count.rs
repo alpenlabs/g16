@@ -5,10 +5,10 @@ use std::env;
 
 use ark_ec::AffineRepr;
 use garbled_snark_verifier::{
-    ark,
-    ark::{CircuitSpecificSetupSNARK, SNARK, UniformRand},
+    Groth16VerifyInput,
+    ark::{self, CircuitSpecificSetupSNARK, SNARK, UniformRand},
     circuit::{CircuitBuilder, StreamingResult},
-    garbled_groth16,
+    groth16_verify, groth16_verify_compressed,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -95,7 +95,7 @@ fn main() {
     let proof = ark::Groth16::<ark::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
 
     // Construct input once, then choose uncompressed vs compressed execution
-    let verify = garbled_groth16::VerifierInput {
+    let verify = Groth16VerifyInput {
         public: vec![c_val],
         a: proof.a.into_group(),
         b: proof.b.into_group(),
@@ -108,13 +108,13 @@ fn main() {
         let result: StreamingResult<_, _, bool> = CircuitBuilder::streaming_execute(
             verify.compress(),
             160_000,
-            garbled_groth16::verify_compressed,
+            groth16_verify_compressed,
         );
 
         (result.output_value, result.gate_count)
     } else {
         let result: StreamingResult<_, _, bool> =
-            CircuitBuilder::streaming_execute(verify, 160_000, garbled_groth16::verify);
+            CircuitBuilder::streaming_execute(verify, 160_000, groth16_verify);
 
         (result.output_value, result.gate_count)
     };
