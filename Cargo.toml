@@ -1,10 +1,10 @@
 [package]
-name = "garbled-snark-verifier"
+name = "g16ckt"
 version = "0.4.0"
 edition = "2024"
 authors = ["BitVM Alliance"]
 license = "GPL-3.0-only"
-repository = "https://github.com/BitVM/garbled-snark-verifier"
+repository = "https://github.com/alpenlabs/g16ckt"
 readme = "README.md"
 rust-version = "1.90"
 keywords = [
@@ -44,27 +44,17 @@ num-traits = "0.2"
 rand = "0.8" # using old version for consistency with ark
 rand_chacha = "0.3" # using old version for consistency with ark
 rayon = "1.10.0"
-core_affinity = "0.8"
-num_cpus = "1.16"
 slab = "0.4.11"
 thiserror = "2.0.12"
 serde_json = "1.0"
 serde = { version = "1.0.225", features = ["derive"] }
 ark-serialize = "0.5.0"
-ark-secp256k1 = "0.5.0"
-
-bitcoin = { version = "0.32.7", features = ["rand", "rand-std"] }
-sha2 = "0.10.9"
-hex = "0.4.3"
 
 [dev-dependencies]
 ark-ec = "0.5.0"
 ark-relations = "0.5.0"
 serde_json = "1.0"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
-bitcoin-script = { git = "https://github.com/BitVM/rust-bitcoin-script" }
-bitvm = { git = "https://github.com/BitVM/BitVM", branch = "main" }
-k256 = "0.13.4"
 
 # Install Git hooks via cargo-husky
 [dev-dependencies.cargo-husky]

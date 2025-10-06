@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["BitVM Alliance"]
 license = "GPL-3.0-only"
-repository = "https://github.com/BitVM/garbled-snark-verifier"
+repository = "https://github.com/alpenlabs/g16ckt"
 rust-version = "1.90"
 
 [lib]

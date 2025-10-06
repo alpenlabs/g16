@@ -5,8 +5,8 @@
 use std::{io::Write, thread};
 
 use ark::{CurveGroup, Field, PrimeGroup, SWCurveConfig};
-use garbled_snark_verifier as gsv;
-use garbled_snark_verifier::{
+use g16ckt as gsv;
+use g16ckt::{
     WireId, ark,
     circuit::{
         CircuitBuilder, CircuitInput, CircuitMode, EncodeInput, StreamingResult, WiresObject,

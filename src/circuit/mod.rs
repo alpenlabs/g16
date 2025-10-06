@@ -26,13 +26,13 @@ pub use component_template_pool::ComponentTemplatePool;
 ///
 /// Simple usage without parameters:
 /// ```
-/// use garbled_snark_verifier::component_key;
+/// use g16ckt::component_key;
 /// let key = component_key!("my_component", 10, 5);
 /// ```
 ///
 /// With parameters (use semicolon to separate params from arity/len):
 /// ```
-/// use garbled_snark_verifier::component_key;
+/// use g16ckt::component_key;
 /// let window_size: &[u8] = &[8];
 /// let key = component_key!("multiplexer", w = window_size ; 10, 5);
 /// ```

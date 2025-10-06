@@ -18,7 +18,7 @@ The `#[component]` and `#[bn_component]` macros transform regular Rust functions
 ## Basic Usage
 
 ```rust
-use garbled_snark_verifier::{component, CircuitContext, Gate, WireId};
+use g16ckt::{component, CircuitContext, Gate, WireId};
 
 #[component]
 fn and_gate(ctx: &mut impl CircuitContext, a: WireId, b: WireId) -> WireId {
@@ -51,7 +51,7 @@ fn build_circuit(root: &mut impl CircuitContext) {
 Parameters and return types can be any type implementing `WiresObject`:
 
 ```rust
-use garbled_snark_verifier::{component, CircuitContext, WireId};
+use g16ckt::{component, CircuitContext, WireId};
 
 #[component]
 fn complex(
@@ -190,7 +190,7 @@ fn and_gate(ctx: &mut impl CircuitContext, a: WireId, b: WireId) -> WireId {
 - `#[component]` is re-exported by the main crate:
 
 ```rust
-use garbled_snark_verifier::component;
+use g16ckt::component;
 ```
 
 - `#[bn_component]` is available from this crate:
