@@ -1,7 +1,6 @@
 pub mod circuit;
 mod core;
 pub mod gadgets;
-mod hw;
 pub mod logging;
 mod math;
 pub mod storage;
@@ -21,7 +20,6 @@ pub use gadgets::{
     groth16::{Groth16VerifyInput, Groth16VerifyInputWires},
     groth16_verify, groth16_verify_compressed,
 };
-pub use hw::{hardware_aes_available, warn_if_software_aes};
 pub use logging::init_tracing;
 pub use math::*;
 
