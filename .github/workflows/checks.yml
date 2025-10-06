@@ -1,0 +1,80 @@
+name: Code Checks
+
+on: [push]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGOFLAGS: --workspace --all-targets --all-features
+
+jobs:
+  formatting:
+    name: Check formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust 1.90 with rustfmt
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.90.0
+          override: true
+          components: rustfmt
+      - name: Run Cargo fmt
+        run: cargo fmt --check
+
+  linting:
+    name: Check linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust 1.90 with clippy
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.90.0
+          override: true
+          components: clippy
+      - name: Run Cargo clippy
+        run: cargo clippy --no-deps $CARGOFLAGS
+
+  udeps:
+    name: Check unused dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust nightly for udeps
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - name: Run cargo-udeps
+        env:
+          RUSTFLAGS: -A warnings
+        uses: aig787/cargo-udeps-action@v1
+        with:
+          version: "latest"
+          args: "--workspace --all-features --all-targets --release"
+
+  codespell:
+    name: Check spelling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install codespell
+        run: pip install codespell
+
+      - name: Run codespell
+        run: |
+          codespell --skip="*.lock,./target" --ignore-words=.codespellignore

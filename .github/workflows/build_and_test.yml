@@ -1,0 +1,39 @@
+name: Build And Test
+
+on: [push]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGOFLAGS: --workspace --all-targets --all-features --release
+
+jobs:
+  build:
+    name: Compile code
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Save build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+
+      - name: Compile
+        run: cargo build $CARGOFLAGS --verbose
+
+  test:
+    name: Test code
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore cached build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+
+      - name: Run tests
+        run: cargo test $CARGOFLAGS
