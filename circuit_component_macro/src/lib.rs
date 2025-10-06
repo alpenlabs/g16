@@ -28,7 +28,7 @@ use parse_sig::ComponentSignature;
 /// # Example
 ///
 /// ```ignore
-/// use g16ckt::{component, circuit::playground::CircuitContext, Gate, WireId};
+/// use g16::{component, circuit::playground::CircuitContext, Gate, WireId};
 ///
 /// #[component]
 /// fn and_gate(ctx: &mut impl CircuitContext, a: WireId, b: WireId) -> WireId {

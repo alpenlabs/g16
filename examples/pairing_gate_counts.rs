@@ -5,8 +5,8 @@
 use std::{io::Write, thread};
 
 use ark::{CurveGroup, Field, PrimeGroup, SWCurveConfig};
-use g16ckt as gsv;
-use g16ckt::{
+use g16 as gsv;
+use g16::{
     WireId, ark,
     circuit::{
         CircuitBuilder, CircuitInput, CircuitMode, EncodeInput, StreamingResult, WiresObject,

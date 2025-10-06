@@ -4,7 +4,7 @@
 use std::env;
 
 use ark_ec::AffineRepr;
-use g16ckt::{
+use g16::{
     Groth16VerifyInput,
     ark::{self, CircuitSpecificSetupSNARK, SNARK, UniformRand},
     circuit::{CircuitBuilder, StreamingResult},
