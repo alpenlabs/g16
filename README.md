@@ -38,7 +38,7 @@ A streaming binary-circuit implementation of a Groth16 verifier over BN254. It t
 
 The implementation uses a **streaming wire-based** circuit construction model that processes circuits incrementally to manage memory efficiently:
 
-- **Wire-Based Model**: All computations flow through `WireId` references representing circuit wires. Wires are allocated incrementally and exeucted/written in streaming fashion, avoiding the need to hold the entire circuit in memory.
+- **Wire-Based Model**: All computations flow through `WireId` references representing circuit wires. Wires are allocated incrementally and executed/written in streaming fashion, avoiding the need to hold the entire circuit in memory.
 
 - **Component Hierarchy**: Circuits are organized as hierarchical components that track input/output wires and gate counts. Components support caching for wire reuse optimization.
 
