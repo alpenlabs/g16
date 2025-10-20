@@ -165,8 +165,6 @@ impl TranslationMode {
             credits: self.creds[out.to_u64() as usize] as u32,
             gate_type,
         };
-        dbg!(gate);
-        std::thread::sleep(Duration::from_secs(1));
         loop {
             if self.prod.try_push(gate).is_ok() {
                 break;
