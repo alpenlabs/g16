@@ -132,11 +132,6 @@ impl TranslationMode {
         mode.allocate_normalized_id(); // ID 0 = FALSE
         mode.allocate_normalized_id(); // ID 1 = TRUE (ONE wire)
 
-        // Reserve IDs for primary inputs (2, 3, 4, ...)
-        for _ in 0..num_primary_inputs {
-            mode.allocate_normalized_id();
-        }
-
         mode
     }
 

@@ -1,0 +1,11 @@
+[package]
+name = "g16check"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+monoio = { version = "0.2.4", features = ["sync"] }
+ckt = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
+indicatif = "0.18.0"
+cynosure = { version = "0.3.0", default-features = false, features = ["hints"] }
+fixedbitset = "0.5.7"
