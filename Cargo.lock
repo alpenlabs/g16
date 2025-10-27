@@ -448,7 +448,7 @@ dependencies = [
 [[package]]
 name = "ckt"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt#6fb41b15799373fa10432ea2b29ae7e0b611de04"
+source = "git+https://github.com/alpenlabs/ckt#ddfb95f4bde3a168704d379cddbf563f3e60c2fd"
 dependencies = [
  "blake3",
  "cynosure 0.3.0",
@@ -503,19 +503,6 @@ name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
-
-[[package]]
-name = "console"
-version = "0.15.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "054ccb5b10f9f2cbf51eb355ca1d05c2d279ce1804688d0db74b4733a5aeafd8"
-dependencies = [
- "encode_unicode",
- "libc",
- "once_cell",
- "unicode-width",
- "windows-sys 0.59.0",
-]
 
 [[package]]
 name = "console"
@@ -879,7 +866,7 @@ dependencies = [
  "ckt",
  "cynosure 0.3.0",
  "g16ckt",
- "indicatif 0.18.0",
+ "indicatif",
  "kanal",
  "lvl",
  "monoio",
@@ -899,7 +886,7 @@ dependencies = [
  "ckt",
  "cynosure 0.3.0",
  "fixedbitset",
- "indicatif 0.18.0",
+ "indicatif",
  "monoio",
 ]
 
@@ -1019,24 +1006,11 @@ dependencies = [
 
 [[package]]
 name = "indicatif"
-version = "0.17.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
-dependencies = [
- "console 0.15.11",
- "number_prefix",
- "portable-atomic",
- "unicode-width",
- "web-time",
-]
-
-[[package]]
-name = "indicatif"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70a646d946d06bedbbc4cac4c218acf4bbf2d87757a784857025f4d447e4e1cd"
 dependencies = [
- "console 0.16.1",
+ "console",
  "portable-atomic",
  "unicode-width",
  "unit-prefix",
@@ -1176,15 +1150,15 @@ checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 [[package]]
 name = "lvl"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt#6fb41b15799373fa10432ea2b29ae7e0b611de04"
+source = "git+https://github.com/alpenlabs/ckt#ddfb95f4bde3a168704d379cddbf563f3e60c2fd"
 dependencies = [
  "ahash",
- "bitvec",
  "ckt",
  "clap",
  "cynosure 0.2.3",
+ "fixedbitset",
  "indexmap",
- "indicatif 0.17.11",
+ "indicatif",
  "mimalloc",
  "monoio",
  "roaring",
@@ -1350,12 +1324,6 @@ dependencies = [
  "hermit-abi",
  "libc",
 ]
-
-[[package]]
-name = "number_prefix"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "once_cell"
@@ -2135,15 +2103,6 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

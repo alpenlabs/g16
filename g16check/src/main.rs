@@ -18,7 +18,7 @@ async fn main() {
     let always_available = reader.header().primary_inputs + 2;
 
     let lookup_wire = |map: &mut HashMap<u64, u32>, wire: u64| -> bool {
-        if wire <= always_available {
+        if wire < always_available {
             return true;
         }
         let mut credits = match map.get(&wire) {
@@ -27,23 +27,25 @@ async fn main() {
         };
         credits -= 1;
         if credits == 0 {
-            // if wire == 159314808 {
-            //     println!("removing wire {}", wire);
-            // }
             map.remove(&wire);
         } else {
-            // if wire == 159314808 {
-            //     println!("decrementing wire {} to {}", wire, credits);
-            // }
             map.insert(wire, credits);
         }
         true
     };
     while let Some(block) = reader.next_block_soa().await.unwrap() {
         for i in 0..block.gates_in_block {
-            // if block.in1[i] == 159314808 || block.in2[i] == 159314808 {
-            //     println!("removing wire {}", wire);
-            // }
+            if block.out[i] == 159314808 {
+                println!(
+                    "{:?} gate {} {} -> {} with {} creds",
+                    block.gate_types[i], block.in1[i], block.in2[i], block.out[i], block.credits[i]
+                );
+            } else if block.in1[i] == 159314808 || block.in2[i] == 159314808 {
+                println!(
+                    "{:?} gate {} {} -> {} with {} creds",
+                    block.gate_types[i], block.in1[i], block.in2[i], block.out[i], block.credits[i]
+                );
+            }
             let in1_available = lookup_wire(&mut wire_map, block.in1[i]);
             let in2_available = lookup_wire(&mut wire_map, block.in2[i]);
             if unlikely(!in1_available) {

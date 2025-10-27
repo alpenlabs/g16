@@ -73,25 +73,55 @@ impl CircuitMode for CreditCollectionMode {
 
     fn evaluate_gate(&mut self, gate: &SourceGate) {
         self.spinner.inc(1);
-        let allocate_id = |s: &mut CreditCollectionMode, num| {
-            for _ in 0..num {
-                s.allocate_wire(1);
-            }
-        };
 
         // handle additional wires for translation
         match gate.gate_type {
             GateType::And => {}
             GateType::Xor => {}
-            GateType::Nand => allocate_id(self, 1),
-            GateType::Xnor => allocate_id(self, 1),
+            GateType::Nand => {
+                self.allocate_wire(1);
+            }
+            GateType::Xnor => {
+                self.allocate_wire(1);
+            }
             GateType::Not => {}
-            GateType::Or => allocate_id(self, 2),
-            GateType::Nor => allocate_id(self, 3),
-            GateType::Nimp => allocate_id(self, 1),
-            GateType::Ncimp => allocate_id(self, 1),
-            GateType::Imp => allocate_id(self, 3),
-            GateType::Cimp => allocate_id(self, 3),
+            GateType::Or => {
+                // in1 and in2 are each used twice in the translation
+                self.add_credits(&[gate.wire_a, gate.wire_b], NonZero::new(1).unwrap());
+                self.allocate_wire(1);
+                self.allocate_wire(1);
+            }
+            GateType::Nor => {
+                // in1 and in2 are each used twice in the translation
+                self.add_credits(&[gate.wire_a, gate.wire_b], NonZero::new(1).unwrap());
+                self.allocate_wire(1);
+                self.allocate_wire(1);
+                self.allocate_wire(1);
+            }
+            GateType::Nimp => {
+                self.allocate_wire(1);
+            }
+            GateType::Ncimp => {
+                self.allocate_wire(1);
+            }
+            GateType::Imp => {
+                // in2 (b) is used twice in the translation
+                self.add_credits(&[gate.wire_b], NonZero::new(1).unwrap());
+                // temp1 (NOT a) is used twice, so needs 2 credits
+                self.allocate_wire(2);
+                // temp2 and temp3 used once each
+                self.allocate_wire(1);
+                self.allocate_wire(1);
+            }
+            GateType::Cimp => {
+                // in1 (a) is used twice in the translation
+                self.add_credits(&[gate.wire_a], NonZero::new(1).unwrap());
+                // temp1 (NOT b) is used twice, so needs 2 credits
+                self.allocate_wire(2);
+                // temp2 and temp3 used once each
+                self.allocate_wire(1);
+                self.allocate_wire(1);
+            }
         };
     }
 }
