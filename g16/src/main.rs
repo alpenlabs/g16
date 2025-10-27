@@ -13,9 +13,14 @@ use std::{
 };
 use tracing::info;
 
-use crate::modes::{credit::CreditCollectionMode, translate::TranslationMode};
+use crate::{
+    modes::{credit::CreditCollectionMode, translate::TranslationMode},
+    u24::U24,
+};
+use g16ckt::circuit::{StreamingMode, component_meta::ComponentMetaBuilder};
 
 mod modes;
+pub mod u24;
 
 // Circuit for generating proofs
 #[derive(Copy, Clone)]
@@ -132,14 +137,14 @@ async fn run(k: usize) {
     const CREDITS_FILE: &str = "credits.cache";
 
     let credits = if let Ok(credits_file) = OpenOptions::new().read(true).open(CREDITS_FILE) {
-        let mut credits: Vec<u16> = Vec::new();
+        let mut credits: Vec<U24> = Vec::new();
         let mut reader = BufReader::new(credits_file);
         loop {
-            let mut buf = [0u8; 2];
+            let mut buf = [0u8; 3];
             if reader.read_exact(&mut buf).is_err() {
                 break;
             }
-            credits.push(u16::from_le_bytes(buf));
+            credits.push(U24::new(buf));
         }
         credits
     } else {
@@ -190,7 +195,8 @@ async fn run(k: usize) {
             vec![ok]
         };
 
-        let credits = ctx.get_mut_mode().unwrap().finish();
+        let (credits, biggest_credits_seen) = ctx.get_mut_mode().unwrap().finish();
+        println!("biggest credits seen: {}", biggest_credits_seen);
         let elapsed_credits = credits_start.elapsed();
         info!(
             "completed credits pass ({}) in {:?}",
@@ -206,16 +212,13 @@ async fn run(k: usize) {
         {
             let mut writer = BufWriter::new(credits_file);
             for credit in &credits {
-                writer.write_all(&credit.to_le_bytes()).unwrap();
+                writer.write_all(&credit.to_bytes()).unwrap();
             }
             writer.flush().unwrap();
         }
 
         credits
     };
-
-    // Create custom builder that can access the mode
-    use g16ckt::circuit::{StreamingMode, component_meta::ComponentMetaBuilder};
 
     ////////////////// translation pass
 

@@ -9,3 +9,4 @@ ckt = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
 indicatif = "0.18.0"
 cynosure = { version = "0.3.0", default-features = false, features = ["hints"] }
 fixedbitset = "0.5.7"
+ahash = "0.8.12"

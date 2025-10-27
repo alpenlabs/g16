@@ -29,10 +29,13 @@ use indicatif::ProgressBar;
 use kanal::{Sender, bounded_async};
 use lvl::types::{CompactWireId, Credits, IntermediateGate};
 use monoio::{FusionDriver, Runtime, RuntimeBuilder, select};
+use sled::Db;
 use tracing::info;
 
+use crate::u24::U24;
+
 pub struct TranslationMode {
-    creds: Vec<u16>,
+    creds: Vec<U24>,
     next_normalized_id: u64,
 
     // Constants
@@ -86,7 +89,7 @@ impl CircuitMode for TranslationMode {
 impl TranslationMode {
     pub async fn new(
         num_primary_inputs: usize,
-        creds: Vec<u16>,
+        creds: Vec<U24>,
         path: &str,
         primary_inputs: u64,
         outputs: Vec<u64>,
@@ -157,7 +160,7 @@ impl TranslationMode {
             in1: in1.to_u64(),
             in2: in2.to_u64(),
             out: out.to_u64(),
-            credits: self.creds[out.to_u64() as usize] as u32,
+            credits: self.creds[out.to_u64() as usize].to_u32(),
             gate_type,
         };
         loop {
