@@ -1,8 +1,9 @@
 use g16ckt::{
-    FrWire, G1Wire, G2Wire, Groth16VerifyInputWires, WireId,
+    Groth16VerifyInput, WireId,
     ark::{self, AffineRepr, CircuitSpecificSetupSNARK, SNARK, UniformRand},
-    circuit::{CircuitInput, EncodeInput, WiresObject},
-    groth16_verify,
+    circuit::CircuitInput,
+    gadgets::groth16::Groth16VerifyCompressedInput,
+    groth16_verify_compressed,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
@@ -58,57 +59,6 @@ impl<F: ark::PrimeField> ark::ConstraintSynthesizer<F> for DummyCircuit<F> {
     }
 }
 
-// Input structure for Groth16 verifier
-struct Inputs {
-    public: Vec<ark::Fr>,
-    a: ark::G1Projective,
-    b: ark::G2Projective,
-    c: ark::G1Projective,
-}
-
-struct InputWires {
-    public: Vec<FrWire>,
-    a: G1Wire,
-    b: G2Wire,
-    c: G1Wire,
-}
-
-impl CircuitInput for Inputs {
-    type WireRepr = InputWires;
-
-    fn allocate(&self, mut issue: impl FnMut() -> WireId) -> Self::WireRepr {
-        InputWires {
-            public: self
-                .public
-                .iter()
-                .map(|_| FrWire::new(&mut issue))
-                .collect(),
-            a: G1Wire::new(&mut issue),
-            b: G2Wire::new(&mut issue),
-            c: G1Wire::new(&mut issue),
-        }
-    }
-
-    fn collect_wire_ids(repr: &Self::WireRepr) -> Vec<WireId> {
-        let mut ids = Vec::new();
-        for s in &repr.public {
-            ids.extend(s.to_wires_vec());
-        }
-        ids.extend(repr.a.to_wires_vec());
-        ids.extend(repr.b.to_wires_vec());
-        ids.extend(repr.c.to_wires_vec());
-        ids
-    }
-}
-
-impl EncodeInput<CreditCollectionMode> for Inputs {
-    fn encode(&self, _repr: &InputWires, _cache: &mut CreditCollectionMode) {}
-}
-
-impl EncodeInput<TranslationMode> for Inputs {
-    fn encode(&self, _repr: &InputWires, _cache: &mut TranslationMode) {}
-}
-
 async fn run(k: usize) {
     // Build circuit and proof
     let mut rng = ChaCha20Rng::seed_from_u64(12345);
@@ -123,20 +73,26 @@ async fn run(k: usize) {
     let c_val = circuit.a.unwrap() * circuit.b.unwrap();
     let proof = ark::Groth16::<ark::Bn254>::prove(&pk, circuit, &mut rng).expect("prove");
 
-    let inputs = Inputs {
+    let inputs = Groth16VerifyInput {
         public: vec![c_val],
         a: proof.a.into_group(),
         b: proof.b.into_group(),
         c: proof.c.into_group(),
-    };
+        vk: vk.clone(),
+    }
+    .compress();
 
     let input_wires = inputs.allocate(|| WireId(0)); // Dummy wire generator
-    let primary_input_count = Inputs::collect_wire_ids(&input_wires).len();
+    let primary_input_count = Groth16VerifyCompressedInput::collect_wire_ids(&input_wires).len();
     println!("Primary input count: {}", primary_input_count);
 
     const CREDITS_FILE: &str = "credits.cache";
+    const OUTPUT_WIRES_FILE: &str = "outputs.cache";
 
-    let credits = if let Ok(credits_file) = OpenOptions::new().read(true).open(CREDITS_FILE) {
+    let (credits, output_wires) = if let Ok(credits_file) =
+        OpenOptions::new().read(true).open(CREDITS_FILE)
+        && let Ok(output_wires_file) = OpenOptions::new().read(true).open(OUTPUT_WIRES_FILE)
+    {
         let mut credits: Vec<U24> = Vec::new();
         let mut reader = BufReader::new(credits_file);
         loop {
@@ -146,56 +102,47 @@ async fn run(k: usize) {
             }
             credits.push(U24::new(buf));
         }
-        credits
+
+        let mut output_wires = Vec::new();
+        let mut reader = BufReader::new(output_wires_file);
+        loop {
+            let mut buf = [0u8; 8];
+            if reader.read_exact(&mut buf).is_err() {
+                break;
+            }
+            output_wires.push(WireId(usize::from_le_bytes(buf)));
+        }
+
+        (credits, output_wires)
     } else {
         let (allocated_inputs, root_meta) = ComponentMetaBuilder::new_with_input(&inputs);
         let mut metadata_mode = StreamingMode::<CreditCollectionMode>::MetadataPass(root_meta);
 
         let metadata_start = Instant::now();
         // Run circuit construction in metadata mode
-        let root_output = {
-            let ok = groth16_verify(
-                &mut metadata_mode,
-                &Groth16VerifyInputWires {
-                    public: allocated_inputs.public,
-                    a: allocated_inputs.a,
-                    b: allocated_inputs.b,
-                    c: allocated_inputs.c,
-                    vk: vk.clone(),
-                },
-            );
+        let meta_output_wires = {
+            let ok = groth16_verify_compressed(&mut metadata_mode, &allocated_inputs);
             vec![ok]
         };
         let metadata_time = metadata_start.elapsed();
         println!("metadata time: {:?}", metadata_time);
 
-        let output_wires = root_output.iter().map(|&w| w).collect::<Vec<_>>();
-        println!("output wires: {:?}", output_wires);
-
         // Convert to execution mode with our logging wrapper
         let (mut ctx, allocated_inputs) = metadata_mode.to_root_ctx(
             CreditCollectionMode::new(primary_input_count),
             &inputs,
-            &output_wires,
+            &meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>(),
         );
 
         let credits_start = Instant::now();
         // Run the credits pass
-        let _ = {
-            let ok = groth16_verify(
-                &mut ctx,
-                &Groth16VerifyInputWires {
-                    public: allocated_inputs.public,
-                    a: allocated_inputs.a,
-                    b: allocated_inputs.b,
-                    c: allocated_inputs.c,
-                    vk: vk.clone(),
-                },
-            );
+        let real_output_wires = {
+            let ok = groth16_verify_compressed(&mut ctx, &allocated_inputs);
             vec![ok]
         };
+        println!("output wires: {:?}", real_output_wires);
 
-        let (credits, biggest_credits_seen) = ctx.get_mut_mode().unwrap().finish();
+        let (mut credits, biggest_credits_seen) = ctx.get_mut_mode().unwrap().finish();
         println!("biggest credits seen: {}", biggest_credits_seen);
         let elapsed_credits = credits_start.elapsed();
         info!(
@@ -203,6 +150,11 @@ async fn run(k: usize) {
             credits.len(),
             elapsed_credits
         );
+
+        // set credits for output wires to 0
+        for output_wire in &real_output_wires {
+            credits[output_wire.0] = 0u32.into();
+        }
 
         // save credits to file
         if let Ok(credits_file) = OpenOptions::new()
@@ -217,7 +169,20 @@ async fn run(k: usize) {
             writer.flush().unwrap();
         }
 
-        credits
+        // save outputs to file
+        if let Ok(output_wires_file) = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(OUTPUT_WIRES_FILE)
+        {
+            let mut writer = BufWriter::new(output_wires_file);
+            for output_wire in &real_output_wires {
+                writer.write_all(&output_wire.0.to_le_bytes()).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+
+        (credits, real_output_wires)
     };
 
     ////////////////// translation pass
@@ -227,23 +192,14 @@ async fn run(k: usize) {
 
     let metadata_start = Instant::now();
     // Run circuit construction in metadata mode
-    let root_output = {
-        let ok = groth16_verify(
-            &mut metadata_mode,
-            &Groth16VerifyInputWires {
-                public: allocated_inputs.public,
-                a: allocated_inputs.a,
-                b: allocated_inputs.b,
-                c: allocated_inputs.c,
-                vk: vk.clone(),
-            },
-        );
+    let meta_output_wires = {
+        let ok = groth16_verify_compressed(&mut metadata_mode, &allocated_inputs);
         vec![ok]
     };
     let metadata_time = metadata_start.elapsed();
     println!("metadata time: {:?}", metadata_time);
 
-    let output_wires = root_output.iter().map(|&w| w).collect::<Vec<_>>();
+    let meta_output_wires = meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>();
 
     const OUTPUT_FILE: &str = "g16.ckt";
 
@@ -253,28 +209,21 @@ async fn run(k: usize) {
             credits,
             OUTPUT_FILE,
             primary_input_count as u64,
-            output_wires.iter().map(|w| w.0 as u64).collect(),
+            output_wires.clone(),
         )
         .await,
         &inputs,
-        &output_wires,
+        &meta_output_wires,
     );
 
     let translation_start = Instant::now();
     // Run the translation pass
-    let _result = {
-        let ok = groth16_verify(
-            &mut ctx,
-            &Groth16VerifyInputWires {
-                public: allocated_inputs.public.clone(),
-                a: allocated_inputs.a,
-                b: allocated_inputs.b,
-                c: allocated_inputs.c,
-                vk: vk.clone(),
-            },
-        );
+    let translation_output_wires = {
+        let ok = groth16_verify_compressed(&mut ctx, &allocated_inputs);
         vec![ok]
     };
+
+    assert_eq!(translation_output_wires, output_wires);
 
     let elapsed_translation = translation_start.elapsed();
     info!(

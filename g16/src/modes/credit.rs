@@ -4,7 +4,6 @@ use g16ckt::{
     Gate as SourceGate, GateType, WireId, circuit::CircuitMode, storage::Credits as SourceCredits,
 };
 use indicatif::ProgressBar;
-use sled::Db;
 
 use crate::u24::U24;
 
@@ -18,14 +17,14 @@ pub struct CreditCollectionMode {
 }
 
 impl CircuitMode for CreditCollectionMode {
-    type WireValue = (); // We don't store values, just translate
+    type WireValue = bool; // We don't store values, just translate
     type CiphertextAcc = ();
 
     fn false_value(&self) -> Self::WireValue {
-        ()
+        false
     }
     fn true_value(&self) -> Self::WireValue {
-        ()
+        true
     }
 
     fn allocate_wire(&mut self, credits: SourceCredits) -> WireId {
@@ -42,7 +41,7 @@ impl CircuitMode for CreditCollectionMode {
     }
 
     fn lookup_wire(&mut self, _wire: WireId) -> Option<Self::WireValue> {
-        Some(()) // Always return dummy value
+        Some(false) // Always return dummy value
     }
 
     fn feed_wire(&mut self, _wire: WireId, _value: Self::WireValue) {

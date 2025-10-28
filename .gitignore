@@ -2,4 +2,5 @@
 .DS_Store
 /circuit_component_macro/target
 credits.cache
+outputs.cache
 *.ckt

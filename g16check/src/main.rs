@@ -1,4 +1,4 @@
-use ahash::{HashMap, HashMapExt};
+use ahash::{HashMap, HashMapExt, HashSet};
 
 use ckt::v5::a::reader::CircuitReaderV5a;
 use cynosure::hints::unlikely;
@@ -16,6 +16,7 @@ async fn main() {
     let mut wire_map = HashMap::new();
     let mut cur = 0;
     let always_available = reader.header().primary_inputs + 2;
+    let outputs = reader.outputs().iter().copied().collect::<HashSet<_>>();
 
     let lookup_wire = |map: &mut HashMap<u64, u32>, wire: u64| -> bool {
         if wire < always_available {
@@ -35,12 +36,7 @@ async fn main() {
     };
     while let Some(block) = reader.next_block_soa().await.unwrap() {
         for i in 0..block.gates_in_block {
-            if block.out[i] == 159314808 {
-                println!(
-                    "{:?} gate {} {} -> {} with {} creds",
-                    block.gate_types[i], block.in1[i], block.in2[i], block.out[i], block.credits[i]
-                );
-            } else if block.in1[i] == 159314808 || block.in2[i] == 159314808 {
+            if unlikely(outputs.contains(&block.out[i])) {
                 println!(
                     "{:?} gate {} {} -> {} with {} creds",
                     block.gate_types[i], block.in1[i], block.in2[i], block.out[i], block.credits[i]

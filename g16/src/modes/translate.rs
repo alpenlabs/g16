@@ -1,18 +1,5 @@
-use std::{
-    collections::hash_map::Entry,
-    fs::{File, OpenOptions},
-    io::{BufWriter, Write},
-    num::NonZero,
-    path::PathBuf,
-    str::FromStr,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{num::NonZero, path::PathBuf, str::FromStr};
 
-use ahash::{HashMap, HashMapExt};
 use ckt::{
     GateType,
     v5::{
@@ -27,10 +14,8 @@ use g16ckt::{
 };
 use indicatif::ProgressBar;
 use kanal::{Sender, bounded_async};
-use lvl::types::{CompactWireId, Credits, IntermediateGate};
-use monoio::{FusionDriver, Runtime, RuntimeBuilder, select};
-use sled::Db;
-use tracing::info;
+use lvl::types::CompactWireId;
+use monoio::{FusionDriver, RuntimeBuilder, select};
 
 use crate::u24::U24;
 
@@ -55,14 +40,14 @@ impl std::fmt::Debug for TranslationMode {
 }
 
 impl CircuitMode for TranslationMode {
-    type WireValue = (); // We don't store values, just translate
+    type WireValue = bool; // We don't store values, just translate
     type CiphertextAcc = ();
 
     fn false_value(&self) -> Self::WireValue {
-        ()
+        false
     }
     fn true_value(&self) -> Self::WireValue {
-        ()
+        true
     }
 
     fn allocate_wire(&mut self, _credits: SourceCredits) -> WireId {
@@ -71,7 +56,7 @@ impl CircuitMode for TranslationMode {
     }
 
     fn lookup_wire(&mut self, _wire: WireId) -> Option<Self::WireValue> {
-        Some(()) // Always return dummy value
+        Some(false) // Always return dummy value
     }
 
     fn feed_wire(&mut self, _wire: WireId, _value: Self::WireValue) {
@@ -92,22 +77,12 @@ impl TranslationMode {
         creds: Vec<U24>,
         path: &str,
         primary_inputs: u64,
-        outputs: Vec<u64>,
+        outputs: Vec<WireId>,
     ) -> Self {
         let (prod, mut cons) = RingBuf::new(2usize.pow(16)).split();
         let (stop_tx, stop_rx) = bounded_async::<()>(1);
 
         let pb = ProgressBar::new(creds.len() as u64);
-
-        let mut mode = Self {
-            creds,
-            pb,
-            next_normalized_id: 0,
-            false_wire_id: CompactWireId::from_u64(0),
-            true_wire_id: CompactWireId::from_u64(1),
-            prod,
-            stop: Some(stop_tx.to_sync()),
-        };
 
         let path = PathBuf::from_str(path).unwrap();
         std::thread::spawn(move || {
@@ -116,9 +91,13 @@ impl TranslationMode {
                 .build()
                 .unwrap()
                 .block_on(async move {
-                    let mut writer = CircuitWriterV5a::new(path, primary_inputs, outputs)
-                        .await
-                        .unwrap();
+                    let mut writer = CircuitWriterV5a::new(
+                        path,
+                        primary_inputs,
+                        outputs.into_iter().map(|w| w.0 as u64).collect(),
+                    )
+                    .await
+                    .unwrap();
 
                     loop {
                         select! {
@@ -130,6 +109,16 @@ impl TranslationMode {
                     writer.finalize().await.unwrap();
                 })
         });
+
+        let mut mode = Self {
+            creds,
+            pb,
+            next_normalized_id: 0,
+            false_wire_id: CompactWireId::from_u64(0),
+            true_wire_id: CompactWireId::from_u64(1),
+            prod,
+            stop: Some(stop_tx.to_sync()),
+        };
 
         // Reserve normalized IDs for constants
         mode.allocate_normalized_id(); // ID 0 = FALSE
