@@ -73,7 +73,6 @@ impl CircuitMode for TranslationMode {
 
 impl TranslationMode {
     pub async fn new(
-        num_primary_inputs: usize,
         creds: Vec<U24>,
         path: &str,
         primary_inputs: u64,
