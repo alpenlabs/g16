@@ -1,5 +1,4 @@
 use ahash::{HashMap, HashMapExt, HashSet};
-
 use ckt::v5::a::reader::CircuitReaderV5a;
 use cynosure::hints::unlikely;
 use fixedbitset::FixedBitSet;

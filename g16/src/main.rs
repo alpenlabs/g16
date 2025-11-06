@@ -1,24 +1,24 @@
+use std::{
+    fs::OpenOptions,
+    io::{BufReader, BufWriter, Read, Write},
+    time::Instant,
+};
+
 use g16ckt::{
     Groth16VerifyInput, WireId,
     ark::{self, AffineRepr, CircuitSpecificSetupSNARK, SNARK, UniformRand},
-    circuit::CircuitInput,
+    circuit::{CircuitInput, StreamingMode, component_meta::ComponentMetaBuilder},
     gadgets::groth16::Groth16VerifyCompressedInput,
     groth16_verify_compressed,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use std::fs::OpenOptions;
-use std::{
-    io::{BufReader, BufWriter, Read, Write},
-    time::Instant,
-};
 use tracing::info;
 
 use crate::{
     modes::{credit::CreditCollectionMode, translate::TranslationMode},
     u24::U24,
 };
-use g16ckt::circuit::{StreamingMode, component_meta::ComponentMetaBuilder};
 
 mod modes;
 pub mod u24;
@@ -131,7 +131,7 @@ async fn run(k: usize) {
         let (mut ctx, allocated_inputs) = metadata_mode.to_root_ctx(
             CreditCollectionMode::new(primary_input_count),
             &inputs,
-            &meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>(),
+            &meta_output_wires.to_vec(),
         );
 
         let credits_start = Instant::now();
@@ -159,7 +159,7 @@ async fn run(k: usize) {
         // save credits to file
         if let Ok(credits_file) = OpenOptions::new()
             .write(true)
-            .create(true)
+            .truncate(true)
             .open(CREDITS_FILE)
         {
             let mut writer = BufWriter::new(credits_file);
@@ -172,7 +172,7 @@ async fn run(k: usize) {
         // save outputs to file
         if let Ok(output_wires_file) = OpenOptions::new()
             .write(true)
-            .create(true)
+            .truncate(true)
             .open(OUTPUT_WIRES_FILE)
         {
             let mut writer = BufWriter::new(output_wires_file);
@@ -199,7 +199,7 @@ async fn run(k: usize) {
     let metadata_time = metadata_start.elapsed();
     println!("metadata time: {:?}", metadata_time);
 
-    let meta_output_wires = meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>();
+    let meta_output_wires = meta_output_wires.to_vec();
 
     const OUTPUT_FILE: &str = "g16.ckt";
 

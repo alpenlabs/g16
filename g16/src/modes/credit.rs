@@ -33,9 +33,9 @@ impl CircuitMode for CreditCollectionMode {
 
         let creds = self.credits.as_mut().unwrap();
         if normalized_id >= creds.len() {
-            creds.resize((normalized_id + 1) as usize, 0u32.into());
+            creds.resize(normalized_id + 1, 0u32.into());
         }
-        let wire_id = WireId(normalized_id as usize);
+        let wire_id = WireId(normalized_id);
         creds[normalized_id] = credits.into();
         wire_id
     }
