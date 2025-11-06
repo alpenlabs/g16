@@ -659,6 +659,7 @@ mod tests {
         lc,
         r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     };
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
