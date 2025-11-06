@@ -74,10 +74,10 @@ pub fn generate_bn_wrapper(
         // Check if we need to clone a reference parameter
         if param_name_to_type
             .get(&param_name)
-            .map_or(false, |ty| matches!(ty, syn::Type::Reference(_)))
+            .is_some_and(|ty| matches!(ty, syn::Type::Reference(_)))
         {
             // For slice types, convert to Vec
-            if param_name_to_type.get(&param_name).map_or(false, |ty| {
+            if param_name_to_type.get(&param_name).is_some_and(|ty| {
                 if let syn::Type::Reference(ref_ty) = ty {
                     matches!(&*ref_ty.elem, syn::Type::Slice(_))
                 } else {
@@ -99,10 +99,10 @@ pub fn generate_bn_wrapper(
                 let param_name = ident.to_string();
                 if param_name_to_type
                     .get(&param_name)
-                    .map_or(false, |ty| matches!(ty, syn::Type::Reference(_)))
+                    .is_some_and(|ty| matches!(ty, syn::Type::Reference(_)))
                 {
                     // For slice types, convert to Vec
-                    if param_name_to_type.get(&param_name).map_or(false, |ty| {
+                    if param_name_to_type.get(&param_name).is_some_and(|ty| {
                         if let syn::Type::Reference(ref_ty) = ty {
                             matches!(&*ref_ty.elem, syn::Type::Slice(_))
                         } else {
@@ -205,7 +205,7 @@ pub fn generate_bn_wrapper(
         // Check if original parameter was a reference type
         if is_already_ref(&param_name) {
             // For slice parameters, convert Vec back to slice reference
-            if param_name_to_type.get(&param_name).map_or(false, |ty| {
+            if param_name_to_type.get(&param_name).is_some_and(|ty| {
                 if let syn::Type::Reference(ref_ty) = ty {
                     matches!(&*ref_ty.elem, syn::Type::Slice(_))
                 } else {
@@ -240,7 +240,7 @@ pub fn generate_bn_wrapper(
                 let param_name = ident.to_string();
                 if is_already_ref(&param_name) {
                     // For slice parameters, convert Vec back to slice reference
-                    if param_name_to_type.get(&param_name).map_or(false, |ty| {
+                    if param_name_to_type.get(&param_name).is_some_and(|ty| {
                         if let syn::Type::Reference(ref_ty) = ty {
                             matches!(&*ref_ty.elem, syn::Type::Slice(_))
                         } else {
