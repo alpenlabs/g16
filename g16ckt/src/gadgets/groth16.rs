@@ -115,21 +115,29 @@ pub fn groth16_verify<C: CircuitContext>(
     .inverse()
     .unwrap();
 
-    let f = final_exponentiation_montgomery(circuit, &f);
+    let finexp = final_exponentiation_montgomery(circuit, &f);
 
-    let is_valid_fq12 = Fq12::equal_constant(circuit, &f, &Fq12::as_montgomery(alpha_beta));
+    let is_valid_proof = Fq12::equal_constant(circuit, &finexp.f, &Fq12::as_montgomery(alpha_beta));
 
     let tmp0 = circuit.issue_wire();
+    let tmp1 = circuit.issue_wire();
+
     let is_valid_final = circuit.issue_wire();
     circuit.add_gate(crate::Gate {
         wire_a: is_valid_sg,
-        wire_b: is_valid_fq12,
+        wire_b: is_valid_msm,
         wire_c: tmp0,
         gate_type: crate::GateType::And,
     });
     circuit.add_gate(crate::Gate {
-        wire_a: is_valid_msm,
-        wire_b: tmp0,
+        wire_a: is_valid_proof,
+        wire_b: finexp.is_valid, // input to final_exponentiation is valid
+        wire_c: tmp1,
+        gate_type: crate::GateType::And,
+    });
+    circuit.add_gate(crate::Gate {
+        wire_a: tmp0,
+        wire_b: tmp1,
         wire_c: is_valid_final,
         gate_type: crate::GateType::And,
     });
