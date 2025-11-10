@@ -20,7 +20,7 @@ use monoio::{FusionDriver, RuntimeBuilder, select};
 use crate::u24::U24;
 
 pub struct TranslationMode {
-    creds: Vec<U24>,
+    creds: Vec<u16>,
     next_normalized_id: u64,
 
     // Constants
@@ -73,7 +73,7 @@ impl CircuitMode for TranslationMode {
 
 impl TranslationMode {
     pub async fn new(
-        creds: Vec<U24>,
+        creds: Vec<u16>,
         path: &str,
         primary_inputs: u64,
         outputs: Vec<WireId>,
@@ -100,8 +100,10 @@ impl TranslationMode {
 
                     loop {
                         select! {
-                            _ = stop_rx.recv() => break,
+                            biased; // EXTREMELY IMPORTANT!!!
+                            // we risk losing gates in the buffer if we don't check the buffer before the stop signal
                             gate = cons.pop() => writer.write_gate(gate).await.unwrap(),
+                            _ = stop_rx.recv() => break,
                         }
                     }
 
@@ -148,7 +150,7 @@ impl TranslationMode {
             in1: in1.to_u64(),
             in2: in2.to_u64(),
             out: out.to_u64(),
-            credits: self.creds[out.to_u64() as usize].to_u32(),
+            credits: self.creds[out.to_u64() as usize] as u32,
             gate_type,
         };
         loop {

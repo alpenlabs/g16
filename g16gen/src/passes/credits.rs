@@ -1,5 +1,5 @@
-use crate::modes::credit::CreditCollectionMode;
-use crate::u24::U24;
+use crate::modes::fanout_ctr::FanoutCounter;
+
 use g16ckt::{
     WireId,
     circuit::{StreamingMode, component_meta::ComponentMetaBuilder},
@@ -13,9 +13,9 @@ use tracing::info;
 pub fn run_credits_pass(
     inputs: &Groth16VerifyCompressedInput,
     primary_input_count: usize,
-) -> (Vec<U24>, Vec<WireId>) {
+) -> (Vec<u16>, Vec<WireId>) {
     let (allocated_inputs, root_meta) = ComponentMetaBuilder::new_with_input(inputs);
-    let mut metadata_mode = StreamingMode::<CreditCollectionMode>::MetadataPass(root_meta);
+    let mut metadata_mode = StreamingMode::<FanoutCounter>::MetadataPass(root_meta);
 
     let metadata_start = Instant::now();
     // Run circuit construction in metadata mode
@@ -28,7 +28,7 @@ pub fn run_credits_pass(
 
     // Convert to execution mode
     let (mut ctx, allocated_inputs) = metadata_mode.to_root_ctx(
-        CreditCollectionMode::new(primary_input_count),
+        FanoutCounter::new(primary_input_count),
         inputs,
         &meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>(),
     );
@@ -41,19 +41,19 @@ pub fn run_credits_pass(
     };
     println!("Output wires: {:?}", real_output_wires);
 
-    let (mut credits, biggest_credits_seen) = ctx.get_mut_mode().unwrap().finish();
+    let (mut fanout, biggest_credits_seen) = ctx.get_mut_mode().unwrap().finish();
     println!("Biggest credits seen: {}", biggest_credits_seen);
     let elapsed_credits = credits_start.elapsed();
     info!(
         "Completed credits pass ({} wires) in {:?}",
-        credits.len(),
+        fanout.len(),
         elapsed_credits
     );
 
     // Set credits for output wires to 0
     for output_wire in &real_output_wires {
-        credits[output_wire.0] = 0u32.into();
+        fanout[output_wire.0] = 0;
     }
 
-    (credits, real_output_wires)
+    (fanout, real_output_wires)
 }

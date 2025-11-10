@@ -3,31 +3,31 @@ use g16ckt::WireId;
 use std::fs::OpenOptions;
 use std::io::{BufReader, BufWriter, Read, Write};
 
-const CREDITS_FILE: &str = "credits.cache";
+const FANOUT_FILE: &str = "fanout.cache";
 const OUTPUT_WIRES_FILE: &str = "outputs.cache";
 
-/// Try to load cached credits and output wires from files
-pub fn try_load_cache() -> Option<(Vec<U24>, Vec<WireId>)> {
-    let credits = load_credits()?;
+/// Try to load cached fanout and output wires from files
+pub fn try_load_cache() -> Option<(Vec<u16>, Vec<WireId>)> {
+    let fanout = load_fanout()?;
     let output_wires = load_output_wires()?;
-    Some((credits, output_wires))
+    Some((fanout, output_wires))
 }
 
-/// Load credits from cache file
-fn load_credits() -> Option<Vec<U24>> {
-    let file = OpenOptions::new().read(true).open(CREDITS_FILE).ok()?;
+/// Load fanout from cache file
+fn load_fanout() -> Option<Vec<u16>> {
+    let file = OpenOptions::new().read(true).open(FANOUT_FILE).ok()?;
     let mut reader = BufReader::new(file);
-    let mut credits = Vec::new();
+    let mut fanout = Vec::new();
 
     loop {
-        let mut buf = [0u8; 3];
+        let mut buf = [0u8; 2];
         if reader.read_exact(&mut buf).is_err() {
             break;
         }
-        credits.push(U24::new(buf));
+        fanout.push(u16::from_le_bytes(buf));
     }
 
-    Some(credits)
+    Some(fanout)
 }
 
 /// Load output wires from cache file
@@ -47,17 +47,17 @@ fn load_output_wires() -> Option<Vec<WireId>> {
     Some(output_wires)
 }
 
-/// Save credits to cache file
-pub fn save_credits(credits: &[U24]) -> std::io::Result<()> {
+/// Save fanout to cache file
+pub fn save_fanout(fanout: &[u16]) -> std::io::Result<()> {
     let file = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(CREDITS_FILE)?;
+        .open(FANOUT_FILE)?;
 
     let mut writer = BufWriter::new(file);
-    for credit in credits {
-        writer.write_all(&credit.to_bytes())?;
+    for fanout in fanout {
+        writer.write_all(&fanout.to_le_bytes())?;
     }
     writer.flush()?;
     Ok(())
@@ -80,8 +80,8 @@ pub fn save_output_wires(output_wires: &[WireId]) -> std::io::Result<()> {
 }
 
 /// Save both credits and output wires to cache files
-pub fn save_cache(credits: &[U24], output_wires: &[WireId]) -> std::io::Result<()> {
-    save_credits(credits)?;
+pub fn save_cache(credits: &[u16], output_wires: &[WireId]) -> std::io::Result<()> {
+    save_fanout(credits)?;
     save_output_wires(output_wires)?;
     Ok(())
 }

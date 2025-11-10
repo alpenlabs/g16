@@ -1,6 +1,6 @@
 /target
 .DS_Store
 /circuit_component_macro/target
-credits.cache
+fanout.cache
 outputs.cache
 *.ckt
