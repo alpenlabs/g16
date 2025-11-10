@@ -528,15 +528,15 @@ impl G2Projective {
 
 #[cfg(test)]
 mod tests {
-    use ark_ec::{CurveGroup, VariableBaseMSM};
-    use ark_ff::UniformRand;
+
+    use ark_ec::{short_weierstrass::SWCurveConfig, AffineRepr, CurveGroup, PrimeGroup, VariableBaseMSM};
+    use ark_ff::{Field, UniformRand};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
     use super::*;
     use crate::{
-        circuit::{CircuitBuilder, CircuitInput, EncodeInput, modes::CircuitMode},
-        test_utils::trng,
+        circuit::{modes::CircuitMode, CircuitBuilder, CircuitInput, EncodeInput}, gadgets::bn254::pairing::double_in_place, test_utils::trng
     };
 
     pub fn rnd_fr(rng: &mut impl Rng) -> ark_bn254::Fr {
@@ -691,6 +691,34 @@ mod tests {
         let actual_result = G2Projective::from_bits_unchecked(result.output_value.clone());
         assert_eq!(actual_result, c_mont);
     }
+
+    #[test]
+    fn test_double_in_place() {
+        use ark_ec::CurveGroup;
+
+        let mut rng = ChaCha20Rng::seed_from_u64(42);
+
+        // a is in Jacobian
+        let a = ark_bn254::G2Projective::rand(&mut rng);
+
+        // Jacobian doubling via library, then to affine
+        let b_aff = (a + a).into_affine();
+
+        // Start from affine (x,y,1) but run HOMOGENEOUS doubling
+        let a_aff = a.into_affine();
+        let mut r = ark_bn254::G2Projective::new(a_aff.x, a_aff.y, ark_bn254::Fq2::ONE);
+        double_in_place(&mut r);             // r = (X,Y,Z) in HOMOGENEOUS
+
+        // Convert HOMOGENEOUS -> JACOBIAN expected by arkworks:
+        r.x *= r.z;                          // X' = X*Z
+        let z2 = r.z.square();
+        r.y *= z2;                           // Y' = Y*Z^2
+        // Z' = Z
+
+        let r_aff = r.into_affine();         // now safe to normalize
+        assert_eq!(b_aff, r_aff);
+    }
+
 
     #[test]
     fn test_g2p_neg() {
@@ -872,5 +900,40 @@ mod tests {
 
         let actual_result = G2Projective::from_bits_unchecked(circuit_result.output_value.clone());
         assert_eq!(actual_result, G2Projective::as_montgomery(result));
+    }
+
+
+    #[test]
+    fn test_cofactor_clearing() {
+        let mut rng = ChaCha20Rng::seed_from_u64(112);
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq2::rand(&mut rng);
+            let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq2::rand(&mut rng), false)
+            };
+            let pt = ark_bn254::G2Affine::new_unchecked(x, y);
+
+            let pt = pt.into_group();
+            const COFACTOR: &'static [u64] = &[
+                0x345f2299c0f9fa8d,
+                0x06ceecda572a2489,
+                0xb85045b68181585e,
+                0x30644e72e131a029,
+            ];
+            let pt = pt.mul_bigint(COFACTOR);
+            let pt = pt.into_affine();
+            // if it's a valid point, it should be on curve and subgroup (after cofactor clearing)
+            assert_eq!(
+                ref_is_valid,
+                pt.is_on_curve() && pt.is_in_correct_subgroup_assuming_on_curve()
+            );
+        }
+
     }
 }

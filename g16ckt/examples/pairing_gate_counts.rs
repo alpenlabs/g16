@@ -211,7 +211,7 @@ fn main() {
             move || {
                 run_and_print("test_ell_montgomery", inputs, move |ctx, w| {
                     let f0 = fq12_one_const();
-                    let coeffs = pairing::ell_coeffs_montgomery(ctx, &w.g2);
+                    let (coeffs, _is_valid) = pairing::ell_coeffs_montgomery(ctx, &w.g2);
                     // Take first coeff triple and evaluate once
                     let c = coeffs.into_iter().next().unwrap();
                     let _f1 = pairing::ell_montgomery(ctx, &f0, &c, &w.g1);

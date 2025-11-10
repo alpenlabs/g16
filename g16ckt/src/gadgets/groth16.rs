@@ -11,16 +11,12 @@ use ark_groth16::VerifyingKey;
 use circuit_component_macro::component;
 
 use crate::{
-    CircuitContext, Fq2Wire, WireId,
-    circuit::{CircuitInput, CircuitMode, EncodeInput, WiresObject},
-    gadgets::{
+    circuit::{CircuitInput, CircuitMode, EncodeInput, FromWires, WiresArity, WiresObject, TRUE_WIRE}, gadgets::{
         bigint,
         bn254::{
-            G2Projective, final_exponentiation::final_exponentiation_montgomery, fq::Fq,
-            fq12::Fq12, fr::Fr, g1::G1Projective,
-            pairing::multi_miller_loop_groth16_evaluate_montgomery_fast,
+            final_exponentiation::final_exponentiation_montgomery, fq::Fq, fq12::Fq12, fr::Fr, g1::G1Projective, pairing::multi_miller_loop_groth16_evaluate_montgomery_fast, G2Projective
         },
-    },
+    }, CircuitContext, Fq2Wire, WireId
 };
 
 #[component]
@@ -83,9 +79,12 @@ pub fn groth16_verify<C: CircuitContext>(
     let msm =
         G1Projective::add_montgomery(circuit, &msm_temp, &G1Projective::new_constant(&gamma0_m));
 
+    let non_invertible = bigint::equal_zero(circuit, &msm.z);
+    let is_valid_msm = circuit.issue_wire(); // invertible
+    circuit.add_gate(crate::Gate { wire_a: non_invertible, wire_b: TRUE_WIRE, wire_c: is_valid_msm, gate_type: crate::GateType::Xor });
     let msm_affine = projective_to_affine_montgomery(circuit, &msm);
 
-    let f = multi_miller_loop_groth16_evaluate_montgomery_fast(
+    let miller_result = multi_miller_loop_groth16_evaluate_montgomery_fast(
         circuit,
         &msm_affine,  // p1
         c,            // p2
@@ -94,6 +93,7 @@ pub fn groth16_verify<C: CircuitContext>(
         -vk.delta_g2, // q2
         b,            // q3
     );
+    let (f, is_valid_sg) = (miller_result.f, miller_result.is_valid);
 
     let alpha_beta = ark_bn254::Bn254::final_exponentiation(ark_bn254::Bn254::multi_miller_loop(
         [vk.alpha_g1.into_group()],
@@ -106,8 +106,52 @@ pub fn groth16_verify<C: CircuitContext>(
 
     let f = final_exponentiation_montgomery(circuit, &f);
 
-    Fq12::equal_constant(circuit, &f, &Fq12::as_montgomery(alpha_beta))
+    let is_valid_fq12 = Fq12::equal_constant(circuit, &f, &Fq12::as_montgomery(alpha_beta));
+
+    let tmp0 = circuit.issue_wire();
+    let is_valid_final = circuit.issue_wire();
+    circuit.add_gate(crate::Gate { wire_a: is_valid_sg, wire_b: is_valid_fq12, wire_c: tmp0, gate_type: crate::GateType::And });
+    circuit.add_gate(crate::Gate { wire_a: is_valid_msm, wire_b: tmp0, wire_c: is_valid_final, gate_type: crate::GateType::And });
+
+    is_valid_final
 }
+
+#[derive(Debug, Clone)]
+struct DecompressedG1Wires {
+    point: G1Projective,
+    is_valid: WireId
+}
+
+impl WiresObject for DecompressedG1Wires {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut wires = Vec::new();
+        wires.extend(self.point.to_wires_vec());
+        wires.push(self.is_valid);
+        wires
+    }
+
+    fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        Self {
+            point: self.point.clone_from(&mut wire_gen),
+            is_valid: wire_gen(),
+        }
+    }
+}
+
+impl FromWires for DecompressedG1Wires {
+    fn from_wires(wires: &[WireId]) -> Option<Self> {
+        assert_eq!(wires.len(), DecompressedG1Wires::ARITY);
+        Some(Self {
+            point: G1Projective::from_wires(&wires[0..G1Projective::N_BITS])?,
+            is_valid: wires[G1Projective::N_BITS]
+        })
+    }
+}
+
+impl WiresArity for DecompressedG1Wires {
+    const ARITY: usize = G1Projective::N_BITS + 1;
+}
+
 
 /// Decompress a compressed G1 point (x, sign bit) into projective wires with z = 1 (Montgomery domain).
 /// - `x_m`: x-coordinate in Montgomery form wires
@@ -116,7 +160,7 @@ pub fn groth16_verify<C: CircuitContext>(
 pub fn decompress_g1_from_compressed<C: CircuitContext>(
     circuit: &mut C,
     compressed: &CompressedG1Wires,
-) -> G1Projective {
+) -> DecompressedG1Wires {
     let CompressedG1Wires { x_m, y_flag } = compressed.clone();
 
     // rhs = x^3 + b (Montgomery domain)
@@ -139,23 +183,59 @@ pub fn decompress_g1_from_compressed<C: CircuitContext>(
     // But assign z = 0 if input was not for a valid curve point (i.e rhs_is_qr != true)
     let one_m = Fq::as_montgomery(ark_bn254::Fq::ONE);
     let one_m = Fq::new_constant(&one_m).expect("const one mont");
-    let zero_m = Fq::as_montgomery(ark_bn254::Fq::ZERO);
-    let zero_m = Fq::new_constant(&zero_m).expect("const zero mont");
 
-    let z = bigint::select(circuit, &one_m.0, &zero_m.0, rhs_is_qr);
-
-    G1Projective {
-        x: x_m.clone(),
-        y,
-        z: Fq(z),
+    DecompressedG1Wires {
+        point: G1Projective {
+            x: x_m.clone(),
+            y,
+            z: one_m,
+        },
+        is_valid: rhs_is_qr
     }
+    
+}
+
+#[derive(Debug, Clone)]
+struct DecompressedG2Wires {
+    point: G2Projective,
+    is_valid: WireId
+}
+
+impl WiresObject for DecompressedG2Wires {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut wires = Vec::new();
+        wires.extend(self.point.to_wires_vec());
+        wires.push(self.is_valid);
+        wires
+    }
+
+    fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        Self {
+            point: self.point.clone_from(&mut wire_gen),
+            is_valid: wire_gen(),
+        }
+    }
+}
+
+impl FromWires for DecompressedG2Wires {
+    fn from_wires(wires: &[WireId]) -> Option<Self> {
+        assert_eq!(wires.len(), DecompressedG2Wires::ARITY);
+        Some(Self {
+            point: G2Projective::from_wires(&wires[0..G2Projective::N_BITS])?,
+            is_valid: wires[G2Projective::N_BITS]
+        })
+    }
+}
+
+impl WiresArity for DecompressedG2Wires {
+    const ARITY: usize = G2Projective::N_BITS + 1;
 }
 
 #[component]
 pub fn decompress_g2_from_compressed<C: CircuitContext>(
     circuit: &mut C,
     compressed: &CompressedG2Wires,
-) -> G2Projective {
+) -> DecompressedG2Wires {
     let CompressedG2Wires { p: x, y_flag } = compressed;
 
     let x2 = Fq2Wire::square_montgomery(circuit, x);
@@ -195,14 +275,17 @@ pub fn decompress_g2_from_compressed<C: CircuitContext>(
     let one_m = Fq::new_constant(&one_m).expect("const one mont");
     let zero_m = Fq::as_montgomery(ark_bn254::Fq::ZERO);
     let zero_m = Fq::new_constant(&zero_m).expect("const zero mont");
-    let z_x = bigint::select(circuit, &one_m.0, &zero_m.0, rhs_is_qr);
     // In Fq2, ONE is (c0=1, c1=0). Use Montgomery representation.
 
-    G2Projective {
-        x: x.clone(),
-        y: Fq2Wire([Fq(final_y_0), Fq(final_y_1)]),
-        z: Fq2Wire([Fq(z_x), zero_m]),
+    DecompressedG2Wires {
+        point: G2Projective {
+            x: x.clone(),
+            y: Fq2Wire([Fq(final_y_0), Fq(final_y_1)]),
+            z: Fq2Wire([one_m, zero_m]),
+        },
+        is_valid: rhs_is_qr,
     }
+    
 }
 
 #[derive(Clone, Debug)]
@@ -279,16 +362,29 @@ pub fn groth16_verify_compressed<C: CircuitContext>(
     let b = decompress_g2_from_compressed(circuit, &input.b);
     let c = decompress_g1_from_compressed(circuit, &input.c);
 
-    groth16_verify(
+    let valid_decompressed= {
+        let tmp0 = circuit.issue_wire();
+        let tmp1 = circuit.issue_wire();
+
+        circuit.add_gate(crate::Gate { wire_a: a.is_valid, wire_b: b.is_valid, wire_c: tmp0, gate_type: crate::GateType::And });
+        circuit.add_gate(crate::Gate { wire_a: tmp0, wire_b: c.is_valid, wire_c: tmp1, gate_type: crate::GateType::And });
+        tmp1
+    };
+
+    let verified_res = groth16_verify(
         circuit,
         &Groth16VerifyInputWires {
             public: input.public.clone(),
-            a,
-            b,
-            c,
+            a: a.point,
+            b: b.point,
+            c: c.point,
             vk: input.vk.clone(),
         },
-    )
+    );
+
+    let valid = circuit.issue_wire();
+    circuit.add_gate(crate::Gate { wire_a: verified_res, wire_b: valid_decompressed, wire_c: valid, gate_type: crate::GateType::And });
+    valid
 }
 
 #[derive(Debug, Clone)]
@@ -522,7 +618,6 @@ mod tests {
         lc,
         r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     };
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
@@ -912,7 +1007,8 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
-                let dec = decompress_g1_from_compressed(ctx, wires);
+                let res = decompress_g1_from_compressed(ctx, wires);
+                let dec = res.point;
 
                 let exp = G1Projective::as_montgomery(p.into_group());
                 let x_ok = Fq::equal_constant(ctx, &dec.x, &exp.x);
@@ -922,7 +1018,7 @@ mod tests {
                 let exp_y_std = Fq::from_montgomery(exp.y);
                 let exp_y_sq_m = Fq::as_montgomery(exp_y_std.square());
                 let y_ok = Fq::equal_constant(ctx, &y_sq, &exp_y_sq_m);
-                vec![x_ok, y_ok, z_ok]
+                vec![x_ok, y_ok, z_ok, res.is_valid]
             });
 
         assert!(out.output_value.iter().all(|&b| b));
@@ -948,10 +1044,9 @@ mod tests {
             let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
                 CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
                     let dec = decompress_g1_from_compressed(ctx, wires);
-                    let is_invalid = bigint::equal_zero(ctx, &dec.z);
-                    vec![is_invalid]
+                    vec![dec.is_valid]
                 });
-            let calc_is_valid = !out.output_value[0];
+            let calc_is_valid = out.output_value[0];
 
             assert_eq!(calc_is_valid, ref_is_valid);
             assert_eq!(calc_is_valid, pt.is_on_curve());
@@ -968,7 +1063,7 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(input, 20_000, |ctx, wires| {
-                let dec = decompress_g2_from_compressed(ctx, wires);
+                let dec = decompress_g2_from_compressed(ctx, wires).point;
 
                 let exp = G2Projective::as_montgomery(p.into_group());
                 let x_ok = Fq2Wire::equal_constant(ctx, &dec.x, &exp.x);
@@ -1004,10 +1099,9 @@ mod tests {
             let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
                 CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
                     let dec = decompress_g2_from_compressed(ctx, wires);
-                    let is_invalid = bigint::equal_zero(ctx, &dec.z.c0());
-                    vec![is_invalid]
+                    vec![dec.is_valid]
                 });
-            let calc_is_valid = !out.output_value[0];
+            let calc_is_valid = out.output_value[0];
 
             assert_eq!(calc_is_valid, ref_is_valid);
             assert_eq!(calc_is_valid, pt.is_on_curve());
@@ -1072,9 +1166,13 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
-                let a_dec = decompress_g1_from_compressed(ctx, &wires.a);
-                let b_dec = decompress_g2_from_compressed(ctx, &wires.b);
-                let c_dec = decompress_g1_from_compressed(ctx, &wires.c);
+                let a = decompress_g1_from_compressed(ctx, &wires.a);
+                let b = decompress_g2_from_compressed(ctx, &wires.b);
+                let c = decompress_g1_from_compressed(ctx, &wires.c);
+
+                let a_dec = a.point;
+                let b_dec = b.point;
+                let c_dec = c.point;
 
                 let a_exp = G1Projective::as_montgomery(proof.a.into_group());
                 let b_exp = G2Projective::as_montgomery(proof.b.into_group());
@@ -1094,6 +1192,7 @@ mod tests {
 
                 vec![
                     a_x_ok, a_y_ok, a_z_ok, b_x_ok, b_y_ok, b_z_ok, c_x_ok, c_y_ok, c_z_ok,
+                    a.is_valid, b.is_valid, c.is_valid,
                 ]
             });
 
