@@ -19,9 +19,15 @@ use ark_ff::{AdditiveGroup, Field};
 use circuit_component_macro::component;
 
 use crate::{
-    circuit::{FromWires, OffCircuitParam, WiresArity, WiresObject, TRUE_WIRE}, gadgets::{bigint, bn254::{
-        final_exponentiation::final_exponentiation_montgomery, fq::Fq, fq12::Fq12, fq2::Fq2, fq6::Fq6, g1::G1Projective, g2::G2Projective
-    }}, CircuitContext, Fp254Impl, WireId
+    CircuitContext, Fp254Impl, WireId,
+    circuit::{FromWires, OffCircuitParam, TRUE_WIRE, WiresArity, WiresObject},
+    gadgets::{
+        bigint,
+        bn254::{
+            final_exponentiation::final_exponentiation_montgomery, fq::Fq, fq2::Fq2, fq6::Fq6,
+            fq12::Fq12, g1::G1Projective, g2::G2Projective,
+        },
+    },
 };
 
 pub fn double_in_place(r: &mut ark_bn254::G2Projective) -> ark_bn254::Fq6 {
@@ -501,9 +507,12 @@ pub fn mul_by_char_montgomery(circuit: &mut impl CircuitContext, r: &G2Projectiv
 /// the order used by arkworks' BN254 prepared coefficients (ell_0, ell_vw, ell_vv). The sequence
 /// contains one triple per doubling step and, conditionally, one per addition step depending on
 /// the signed bits of `ATE_LOOP_COUNT`, followed by two final frobenius-based additions.
-/// 
+///
 /// is_in_sg: q is point in subgroup
-pub fn ell_coeffs_montgomery<C: CircuitContext>(circuit: &mut C, q: &G2Projective) -> (Vec<Fq6>, WireId) {
+pub fn ell_coeffs_montgomery<C: CircuitContext>(
+    circuit: &mut C,
+    q: &G2Projective,
+) -> (Vec<Fq6>, WireId) {
     let neg_q = g2_affine_neg_evaluate(circuit, q);
 
     let mut ellc: Vec<Fq6> = vec![];
@@ -552,10 +561,14 @@ pub fn ell_coeffs_montgomery<C: CircuitContext>(circuit: &mut C, q: &G2Projectiv
         let z0_is_zero = bigint::equal_zero(circuit, z0);
         let z1_is_zero = bigint::equal_zero(circuit, z1);
         let z_is_zero = circuit.issue_wire();
-        circuit.add_gate(crate::Gate { wire_a: z0_is_zero, wire_b: z1_is_zero, wire_c: z_is_zero, gate_type: crate::GateType::And });
+        circuit.add_gate(crate::Gate {
+            wire_a: z0_is_zero,
+            wire_b: z1_is_zero,
+            wire_c: z_is_zero,
+            gate_type: crate::GateType::And,
+        });
         z0_is_zero
     };
-
 
     (ellc, is_in_sg)
 }
@@ -672,7 +685,12 @@ pub fn multi_miller_loop_montgomery_fast<C: CircuitContext>(
         qells.push(qell.0);
 
         let tmp0 = circuit.issue_wire();
-        circuit.add_gate(crate::Gate { wire_a: valid_sg, wire_b: qell.1, wire_c: tmp0, gate_type: crate::GateType::And });
+        circuit.add_gate(crate::Gate {
+            wire_a: valid_sg,
+            wire_b: qell.1,
+            wire_c: tmp0,
+            gate_type: crate::GateType::And,
+        });
         valid_sg = tmp0;
     }
     let mut u = Vec::new();
@@ -718,7 +736,7 @@ pub fn multi_miller_loop_montgomery_fast<C: CircuitContext>(
 
     MillerLoopResult {
         f,
-        is_valid: valid_sg
+        is_valid: valid_sg,
     }
 }
 
@@ -900,7 +918,7 @@ pub fn miller_loop_montgomery_fast<C: CircuitContext>(
     let res = ell_montgomery(circuit, &f, &qell_next, p);
     MillerLoopResult {
         f: res,
-        is_valid: is_valid_sg
+        is_valid: is_valid_sg,
     }
 }
 
@@ -988,12 +1006,11 @@ impl WiresObject for MillerLoopResult {
     }
 
     fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
-
         MillerLoopResult {
             f: Fq12([
                 self.f.0[0].clone_from(&mut wire_gen),
-                self.f.0[1].clone_from(&mut wire_gen)
-                ]),
+                self.f.0[1].clone_from(&mut wire_gen),
+            ]),
             is_valid: wire_gen(),
         }
     }
@@ -1004,8 +1021,8 @@ impl FromWires for MillerLoopResult {
         if wires.len() == MillerLoopResult::ARITY {
             let mid = Fq6::N_BITS;
             let fq6_1 = Fq6::from_wires(&wires[..mid])?;
-            let fq6_2 = Fq6::from_wires(&wires[mid..2*mid])?;
-            let is_valid_wires = &wires[2*mid..];
+            let fq6_2 = Fq6::from_wires(&wires[mid..2 * mid])?;
+            let is_valid_wires = &wires[2 * mid..];
             assert_eq!(is_valid_wires.len(), 1); // single is valid wire
             let res = MillerLoopResult {
                 f: Fq12([fq6_1, fq6_2]),
@@ -1088,7 +1105,7 @@ pub fn multi_miller_loop_groth16_evaluate_montgomery_fast<C: CircuitContext>(
 
     MillerLoopResult {
         f,
-        is_valid: is_in_valid_sg
+        is_valid: is_in_valid_sg,
     }
 }
 
@@ -1133,12 +1150,12 @@ mod tests {
             } else {
                 // else generate some random value
                 (ark_bn254::Fq2::rand(rng), false)
-            };  
+            };
             if ref_is_valid {
                 pt = ark_bn254::G2Affine::new_unchecked(x, y);
-                break
+                break;
             }
-        }  
+        }
         return pt;
     }
 
@@ -1254,7 +1271,7 @@ mod tests {
                 let res = ell_montgomery(ctx, &w.f, &w.c, &w.p);
                 MillerLoopResult {
                     f: res,
-                    is_valid: TRUE_WIRE
+                    is_valid: TRUE_WIRE,
                 }
             });
 
@@ -1709,7 +1726,12 @@ mod tests {
                     ok = new_ok;
                 }
                 let valid = ctx.issue_wire();
-                ctx.add_gate(Gate { wire_a: ok, wire_b: got.1, wire_c: valid, gate_type: crate::GateType::And });
+                ctx.add_gate(Gate {
+                    wire_a: ok,
+                    wire_b: got.1,
+                    wire_c: valid,
+                    gate_type: crate::GateType::And,
+                });
                 vec![valid]
             },
         );
@@ -1997,7 +2019,7 @@ mod tests {
                 let fexp = final_exponentiation_montgomery(ctx, &f_ml.f);
                 MillerLoopResult {
                     f: fexp,
-                    is_valid: f_ml.is_valid
+                    is_valid: f_ml.is_valid,
                 }
             },
         );
@@ -2038,10 +2060,12 @@ mod tests {
             let c0 = decode_fq6_from_wires(&wires.f.0[0], cache);
             let c1 = decode_fq6_from_wires(&wires.f.0[1], cache);
 
-            let is_valid = cache.lookup_wire(wires.is_valid).expect("missing wire value");
+            let is_valid = cache
+                .lookup_wire(wires.is_valid)
+                .expect("missing wire value");
             Self {
                 value: ark_bn254::Fq12::new(c0, c1),
-                is_valid
+                is_valid,
             }
         }
     }
@@ -2139,7 +2163,10 @@ mod tests {
         let result =
             CircuitBuilder::streaming_execute::<_, _, Fq12Output>(input, 10_000, |ctx, input| {
                 let f = ell_eval_const(ctx, &input.f, &coeff, &input.p);
-                MillerLoopResult { f, is_valid: TRUE_WIRE }
+                MillerLoopResult {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
             });
 
         assert_eq!(result.output_value.value, expected_m);
@@ -2218,7 +2245,10 @@ mod tests {
             10_000,
             |ctx, input| {
                 let f = miller_loop_const_q(ctx, &input.p, &q);
-                MillerLoopResult { f, is_valid: TRUE_WIRE }
+                MillerLoopResult {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
             },
         );
 
@@ -2298,7 +2328,10 @@ mod tests {
             10_000,
             |ctx, input| {
                 let f = pairing_const_q(ctx, &input.p, &q);
-                MillerLoopResult { f, is_valid: TRUE_WIRE }
+                MillerLoopResult {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
             },
         );
 
@@ -2391,7 +2424,10 @@ mod tests {
             |ctx, input| {
                 let ps = [input.p0.clone(), input.p1.clone(), input.p2.clone()];
                 let f = multi_pairing_const_q(ctx, &ps, &[q0, q1, q2]);
-                MillerLoopResult { f, is_valid: TRUE_WIRE }
+                MillerLoopResult {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
             },
         );
 
@@ -2639,9 +2675,7 @@ mod tests {
         let result = CircuitBuilder::streaming_execute::<_, _, Fq12Output>(
             input,
             40_000,
-            |circuit, wires| {
-                multi_miller_loop_montgomery_fast(circuit, &wires.ps, &wires.qs)
-            }
+            |circuit, wires| multi_miller_loop_montgomery_fast(circuit, &wires.ps, &wires.qs),
         );
 
         assert_eq!(result.output_value.value, expected_m);
@@ -2829,7 +2863,11 @@ mod tests {
                     let q1 = random_g2_affine(&mut rng);
                     let q2 = random_g2_affine(&mut rng);
                     let q3_aff = random_g2_affine_sg(&mut rng);
-                    let q3 = ark_bn254::G2Projective::new_unchecked(q3_aff.x, q3_aff.y, ark_bn254::Fq2::ONE);
+                    let q3 = ark_bn254::G2Projective::new_unchecked(
+                        q3_aff.x,
+                        q3_aff.y,
+                        ark_bn254::Fq2::ONE,
+                    );
                     (p1, p2, p3, q1, q2, q3)
                 }
                 // q3 with z = 1 (affine form encoded as projective) to exercise mixed-add friendly path
@@ -2846,7 +2884,11 @@ mod tests {
                     let q1 = random_g2_affine(&mut rng);
                     let q2 = random_g2_affine(&mut rng);
                     let q3_aff = random_g2_affine_sg(&mut rng);
-                    let q3 = ark_bn254::G2Projective::new_unchecked(q3_aff.x, q3_aff.y, ark_bn254::Fq2::ONE);
+                    let q3 = ark_bn254::G2Projective::new_unchecked(
+                        q3_aff.x,
+                        q3_aff.y,
+                        ark_bn254::Fq2::ONE,
+                    );
                     (p1, p2, p3, q1, q2, q3)
                 }
             };

@@ -11,12 +11,18 @@ use ark_groth16::VerifyingKey;
 use circuit_component_macro::component;
 
 use crate::{
-    circuit::{CircuitInput, CircuitMode, EncodeInput, FromWires, WiresArity, WiresObject, TRUE_WIRE}, gadgets::{
+    CircuitContext, Fq2Wire, WireId,
+    circuit::{
+        CircuitInput, CircuitMode, EncodeInput, FromWires, TRUE_WIRE, WiresArity, WiresObject,
+    },
+    gadgets::{
         bigint,
         bn254::{
-            final_exponentiation::final_exponentiation_montgomery, fq::Fq, fq12::Fq12, fr::Fr, g1::G1Projective, pairing::multi_miller_loop_groth16_evaluate_montgomery_fast, G2Projective
+            G2Projective, final_exponentiation::final_exponentiation_montgomery, fq::Fq,
+            fq12::Fq12, fr::Fr, g1::G1Projective,
+            pairing::multi_miller_loop_groth16_evaluate_montgomery_fast,
         },
-    }, CircuitContext, Fq2Wire, WireId
+    },
 };
 
 #[component]
@@ -81,7 +87,12 @@ pub fn groth16_verify<C: CircuitContext>(
 
     let non_invertible = bigint::equal_zero(circuit, &msm.z);
     let is_valid_msm = circuit.issue_wire(); // invertible
-    circuit.add_gate(crate::Gate { wire_a: non_invertible, wire_b: TRUE_WIRE, wire_c: is_valid_msm, gate_type: crate::GateType::Xor });
+    circuit.add_gate(crate::Gate {
+        wire_a: non_invertible,
+        wire_b: TRUE_WIRE,
+        wire_c: is_valid_msm,
+        gate_type: crate::GateType::Xor,
+    });
     let msm_affine = projective_to_affine_montgomery(circuit, &msm);
 
     let miller_result = multi_miller_loop_groth16_evaluate_montgomery_fast(
@@ -110,8 +121,18 @@ pub fn groth16_verify<C: CircuitContext>(
 
     let tmp0 = circuit.issue_wire();
     let is_valid_final = circuit.issue_wire();
-    circuit.add_gate(crate::Gate { wire_a: is_valid_sg, wire_b: is_valid_fq12, wire_c: tmp0, gate_type: crate::GateType::And });
-    circuit.add_gate(crate::Gate { wire_a: is_valid_msm, wire_b: tmp0, wire_c: is_valid_final, gate_type: crate::GateType::And });
+    circuit.add_gate(crate::Gate {
+        wire_a: is_valid_sg,
+        wire_b: is_valid_fq12,
+        wire_c: tmp0,
+        gate_type: crate::GateType::And,
+    });
+    circuit.add_gate(crate::Gate {
+        wire_a: is_valid_msm,
+        wire_b: tmp0,
+        wire_c: is_valid_final,
+        gate_type: crate::GateType::And,
+    });
 
     is_valid_final
 }
@@ -119,7 +140,7 @@ pub fn groth16_verify<C: CircuitContext>(
 #[derive(Debug, Clone)]
 struct DecompressedG1Wires {
     point: G1Projective,
-    is_valid: WireId
+    is_valid: WireId,
 }
 
 impl WiresObject for DecompressedG1Wires {
@@ -143,7 +164,7 @@ impl FromWires for DecompressedG1Wires {
         assert_eq!(wires.len(), DecompressedG1Wires::ARITY);
         Some(Self {
             point: G1Projective::from_wires(&wires[0..G1Projective::N_BITS])?,
-            is_valid: wires[G1Projective::N_BITS]
+            is_valid: wires[G1Projective::N_BITS],
         })
     }
 }
@@ -151,7 +172,6 @@ impl FromWires for DecompressedG1Wires {
 impl WiresArity for DecompressedG1Wires {
     const ARITY: usize = G1Projective::N_BITS + 1;
 }
-
 
 /// Decompress a compressed G1 point (x, sign bit) into projective wires with z = 1 (Montgomery domain).
 /// - `x_m`: x-coordinate in Montgomery form wires
@@ -190,15 +210,14 @@ pub fn decompress_g1_from_compressed<C: CircuitContext>(
             y,
             z: one_m,
         },
-        is_valid: rhs_is_qr
+        is_valid: rhs_is_qr,
     }
-    
 }
 
 #[derive(Debug, Clone)]
 struct DecompressedG2Wires {
     point: G2Projective,
-    is_valid: WireId
+    is_valid: WireId,
 }
 
 impl WiresObject for DecompressedG2Wires {
@@ -222,7 +241,7 @@ impl FromWires for DecompressedG2Wires {
         assert_eq!(wires.len(), DecompressedG2Wires::ARITY);
         Some(Self {
             point: G2Projective::from_wires(&wires[0..G2Projective::N_BITS])?,
-            is_valid: wires[G2Projective::N_BITS]
+            is_valid: wires[G2Projective::N_BITS],
         })
     }
 }
@@ -285,7 +304,6 @@ pub fn decompress_g2_from_compressed<C: CircuitContext>(
         },
         is_valid: rhs_is_qr,
     }
-    
 }
 
 #[derive(Clone, Debug)]
@@ -362,12 +380,22 @@ pub fn groth16_verify_compressed<C: CircuitContext>(
     let b = decompress_g2_from_compressed(circuit, &input.b);
     let c = decompress_g1_from_compressed(circuit, &input.c);
 
-    let valid_decompressed= {
+    let valid_decompressed = {
         let tmp0 = circuit.issue_wire();
         let tmp1 = circuit.issue_wire();
 
-        circuit.add_gate(crate::Gate { wire_a: a.is_valid, wire_b: b.is_valid, wire_c: tmp0, gate_type: crate::GateType::And });
-        circuit.add_gate(crate::Gate { wire_a: tmp0, wire_b: c.is_valid, wire_c: tmp1, gate_type: crate::GateType::And });
+        circuit.add_gate(crate::Gate {
+            wire_a: a.is_valid,
+            wire_b: b.is_valid,
+            wire_c: tmp0,
+            gate_type: crate::GateType::And,
+        });
+        circuit.add_gate(crate::Gate {
+            wire_a: tmp0,
+            wire_b: c.is_valid,
+            wire_c: tmp1,
+            gate_type: crate::GateType::And,
+        });
         tmp1
     };
 
@@ -383,7 +411,12 @@ pub fn groth16_verify_compressed<C: CircuitContext>(
     );
 
     let valid = circuit.issue_wire();
-    circuit.add_gate(crate::Gate { wire_a: verified_res, wire_b: valid_decompressed, wire_c: valid, gate_type: crate::GateType::And });
+    circuit.add_gate(crate::Gate {
+        wire_a: verified_res,
+        wire_b: valid_decompressed,
+        wire_c: valid,
+        gate_type: crate::GateType::And,
+    });
     valid
 }
 

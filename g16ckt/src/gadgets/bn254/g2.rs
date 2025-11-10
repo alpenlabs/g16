@@ -529,14 +529,18 @@ impl G2Projective {
 #[cfg(test)]
 mod tests {
 
-    use ark_ec::{short_weierstrass::SWCurveConfig, AffineRepr, CurveGroup, PrimeGroup, VariableBaseMSM};
+    use ark_ec::{
+        AffineRepr, CurveGroup, PrimeGroup, VariableBaseMSM, short_weierstrass::SWCurveConfig,
+    };
     use ark_ff::{Field, UniformRand};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
 
     use super::*;
     use crate::{
-        circuit::{modes::CircuitMode, CircuitBuilder, CircuitInput, EncodeInput}, gadgets::bn254::pairing::double_in_place, test_utils::trng
+        circuit::{CircuitBuilder, CircuitInput, EncodeInput, modes::CircuitMode},
+        gadgets::bn254::pairing::double_in_place,
+        test_utils::trng,
     };
 
     pub fn rnd_fr(rng: &mut impl Rng) -> ark_bn254::Fr {
@@ -707,18 +711,17 @@ mod tests {
         // Start from affine (x,y,1) but run HOMOGENEOUS doubling
         let a_aff = a.into_affine();
         let mut r = ark_bn254::G2Projective::new(a_aff.x, a_aff.y, ark_bn254::Fq2::ONE);
-        double_in_place(&mut r);             // r = (X,Y,Z) in HOMOGENEOUS
+        double_in_place(&mut r); // r = (X,Y,Z) in HOMOGENEOUS
 
         // Convert HOMOGENEOUS -> JACOBIAN expected by arkworks:
-        r.x *= r.z;                          // X' = X*Z
+        r.x *= r.z; // X' = X*Z
         let z2 = r.z.square();
-        r.y *= z2;                           // Y' = Y*Z^2
+        r.y *= z2; // Y' = Y*Z^2
         // Z' = Z
 
-        let r_aff = r.into_affine();         // now safe to normalize
+        let r_aff = r.into_affine(); // now safe to normalize
         assert_eq!(b_aff, r_aff);
     }
-
 
     #[test]
     fn test_g2p_neg() {
@@ -902,7 +905,6 @@ mod tests {
         assert_eq!(actual_result, G2Projective::as_montgomery(result));
     }
 
-
     #[test]
     fn test_cofactor_clearing() {
         let mut rng = ChaCha20Rng::seed_from_u64(112);
@@ -934,6 +936,5 @@ mod tests {
                 pt.is_on_curve() && pt.is_in_correct_subgroup_assuming_on_curve()
             );
         }
-
     }
 }
