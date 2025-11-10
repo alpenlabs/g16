@@ -109,7 +109,7 @@ pub fn final_exponentiation_montgomery<C: CircuitContext>(circuit: &mut C, f: &F
         wire_a: is_zero,
         wire_b: TRUE_WIRE,
         wire_c: is_valid,
-        gate_type: crate::GateType::And,
+        gate_type: crate::GateType::Xor,
     });
 
     let f_inv = Fq12::inverse_montgomery(circuit, f);
