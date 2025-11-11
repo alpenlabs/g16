@@ -12,17 +12,19 @@ use circuit_component_macro::component;
 use num_bigint::BigUint;
 
 use crate::{
-    CircuitContext, Fq2Wire, WireId,
+    CircuitContext, Fp254Impl, Fq2Wire, WireId,
     circuit::{
-        CircuitInput, CircuitMode, EncodeInput, FromWires, TRUE_WIRE, WiresArity, WiresObject,
+        CircuitInput, CircuitMode, EncodeInput, FALSE_WIRE, FromWires, TRUE_WIRE, WiresArity,
+        WiresObject,
     },
     gadgets::{
-        bigint,
+        bigint::{self, BigIntWires},
         bn254::{
             G2Projective, final_exponentiation::final_exponentiation_montgomery, fq::Fq,
             fq12::Fq12, fr::Fr, g1::G1Projective,
             pairing::multi_miller_loop_groth16_evaluate_montgomery_fast,
         },
+        hash::blake3::{HashOutputWires, InputMessage, InputMessageWires, blake3_hash},
     },
 };
 
@@ -696,6 +698,179 @@ impl<M: CircuitMode<WireValue = bool>> EncodeInput<M> for Groth16VerifyCompresse
 
         // Feed C.x (Montgomery) bits and flag
         let c_x_fn = Fq::get_wire_bits_fn(&repr.c.x_m, &c_x_m).unwrap();
+        for &wire_id in repr.c.x_m.iter() {
+            if let Some(bit) = c_x_fn(wire_id) {
+                cache.feed_wire(wire_id, bit);
+            }
+        }
+        cache.feed_wire(repr.c.y_flag, c_flag);
+    }
+}
+
+// Convert from hash to scalar field element(s)
+// A way is to truncate the top 3 bits to make the hash fit in the scalar field
+fn convert_hash_to_bigint_wires(out_hash: HashOutputWires) -> Vec<Fr> {
+    let mut out_hash = out_hash.value;
+    // mask top 3 bits by taking the first byte of hash output and masking its top 3 bit
+    out_hash[0].0[5] = FALSE_WIRE;
+    out_hash[0].0[6] = FALSE_WIRE;
+    out_hash[0].0[7] = FALSE_WIRE;
+    // big endian to little endian ordering of BigIntWires
+    out_hash.reverse();
+    let out_hash: Vec<WireId> = out_hash.into_iter().flat_map(|x| x.0).collect();
+    let out_hash = BigIntWires {
+        bits: out_hash[0..Fr::N_BITS].to_vec(),
+    };
+    vec![Fr(out_hash)]
+}
+
+/// Convenience wrapper: verify using compressed A and C (x, y_flag). B remains host-provided `G2Affine`.
+/// Take raw public input and convert to scalar field element(s) in-circuit
+///
+// TODO: check if conversion from InputMessage to Fr can be done outside of this function
+// while a function to make this conversion is passed as argument to `groth16_verify_compressed_over_raw`
+// This would make it possible to reuse this function for proofs of different ZKVMs.
+#[component(offcircuit_args = "vk")]
+pub fn groth16_verify_compressed_over_raw<const N: usize, C: CircuitContext>(
+    circuit: &mut C,
+    public: &InputMessageWires<N>,
+    compressed_a: &CompressedG1Wires,
+    compressed_b: &CompressedG2Wires,
+    compressed_c: &CompressedG1Wires,
+    vk: &ark_groth16::VerifyingKey<ark_bn254::Bn254>,
+) -> crate::WireId {
+    let a = decompress_g1_from_compressed(circuit, compressed_a);
+    let b = decompress_g2_from_compressed(circuit, compressed_b);
+    let c = decompress_g1_from_compressed(circuit, compressed_c);
+
+    // convert InputMessage<N> to scalar field elements
+    let out_hash = blake3_hash(circuit, *public);
+    let hash_fr = convert_hash_to_bigint_wires(out_hash);
+
+    let valid_decompressed = {
+        let tmp0 = circuit.issue_wire();
+        let tmp1 = circuit.issue_wire();
+
+        circuit.add_gate(crate::Gate {
+            wire_a: a.is_valid,
+            wire_b: b.is_valid,
+            wire_c: tmp0,
+            gate_type: crate::GateType::And,
+        });
+        circuit.add_gate(crate::Gate {
+            wire_a: tmp0,
+            wire_b: c.is_valid,
+            wire_c: tmp1,
+            gate_type: crate::GateType::And,
+        });
+        tmp1
+    };
+
+    let input_wires = Groth16VerifyInputWires {
+        public: hash_fr,
+        a: a.point,
+        b: b.point,
+        c: c.point,
+        vk: vk.clone(),
+    };
+    let verified_res = groth16_verify(circuit, &input_wires);
+
+    let valid = circuit.issue_wire();
+    circuit.add_gate(crate::Gate {
+        wire_a: verified_res,
+        wire_b: valid_decompressed,
+        wire_c: valid,
+        gate_type: crate::GateType::And,
+    });
+    valid
+}
+
+pub struct Groth16ExecRawInputCompressedRaw<const N: usize> {
+    pub public: InputMessage<N>,
+    pub a: ark_bn254::G1Projective,
+    pub b: ark_bn254::G2Projective,
+    pub c: ark_bn254::G1Projective,
+}
+
+#[derive(Debug)]
+pub struct CompressedGroth16ExecInputRawWires<const N: usize> {
+    pub public: InputMessageWires<N>,
+    pub a: CompressedG1Wires,
+    pub b: CompressedG2Wires,
+    pub c: CompressedG1Wires,
+}
+
+impl<const N: usize> CircuitInput for Groth16ExecRawInputCompressedRaw<N> {
+    type WireRepr = CompressedGroth16ExecInputRawWires<N>;
+
+    fn allocate(&self, mut issue: impl FnMut() -> WireId) -> Self::WireRepr {
+        CompressedGroth16ExecInputRawWires {
+            public: InputMessageWires::new(&mut issue),
+            a: CompressedG1Wires::new(&mut issue),
+            b: CompressedG2Wires::new(&mut issue),
+            c: CompressedG1Wires::new(&mut issue),
+        }
+    }
+    fn collect_wire_ids(repr: &Self::WireRepr) -> Vec<crate::WireId> {
+        let mut ids = Vec::new();
+        ids.extend(repr.public.to_wires_vec());
+        ids.extend(repr.a.to_wires_vec());
+        ids.extend(repr.b.to_wires_vec());
+        ids.extend(repr.c.to_wires_vec());
+        ids
+    }
+}
+
+impl<const N: usize, M: CircuitMode<WireValue = bool>> EncodeInput<M>
+    for Groth16ExecRawInputCompressedRaw<N>
+{
+    fn encode(&self, repr: &CompressedGroth16ExecInputRawWires<N>, cache: &mut M) {
+        // Encode public scalars
+        self.public.encode(&repr.public, cache);
+
+        // Compute compression from standard affine coords; feed Montgomery x + flag
+        let a_aff_std = self.a.into_affine();
+        let b_aff_std = self.b.into_affine();
+        let c_aff_std = self.c.into_affine();
+
+        let a_flag = (a_aff_std.y.square())
+            .sqrt()
+            .expect("y^2 must be QR")
+            .eq(&a_aff_std.y);
+        let b_flag = (b_aff_std.y.square())
+            .sqrt()
+            .expect("y^2 must be QR in Fq2")
+            .eq(&b_aff_std.y);
+        let c_flag = (c_aff_std.y.square())
+            .sqrt()
+            .expect("y^2 must be QR")
+            .eq(&c_aff_std.y);
+
+        let a_x_m = Fq::as_montgomery(a_aff_std.x);
+        let b_x_m = Fq2Wire::as_montgomery(b_aff_std.x);
+        let c_x_m = Fq::as_montgomery(c_aff_std.x);
+
+        // Feed A.x (Montgomery) bits and flag
+        let a_x_fn = Fq::get_wire_bits_fn(&repr.a.x_m, &a_x_m).unwrap();
+        for &wire_id in repr.a.x_m.iter() {
+            if let Some(bit) = a_x_fn(wire_id) {
+                cache.feed_wire(wire_id, bit);
+            }
+        }
+        cache.feed_wire(repr.a.y_flag, a_flag);
+
+        // Feed B.x (Montgomery) bits and flag (Fq2 as c0||c1)
+        let b_x_fn = Fq2Wire::get_wire_bits_fn(&repr.b.p, &b_x_m).unwrap();
+        for &wire_id in repr.b.p.iter() {
+            if let Some(bit) = b_x_fn(wire_id) {
+                cache.feed_wire(wire_id, bit);
+            }
+        }
+        cache.feed_wire(repr.b.y_flag, b_flag);
+
+        // Feed C.x (Montgomery) bits and flag
+        let c_x_fn = Fq::get_wire_bits_fn(&repr.c.x_m, &c_x_m).unwrap();
+
         for &wire_id in repr.c.x_m.iter() {
             if let Some(bit) = c_x_fn(wire_id) {
                 cache.feed_wire(wire_id, bit);
