@@ -9,9 +9,9 @@ mod proof_setup;
 pub mod u24;
 
 use cache::{save_cache, try_load_cache};
-use passes::credits::run_credits_pass;
-use passes::input_bits::write_input_bits;
-use passes::translation::run_translation_pass;
+use passes::{
+    credits::run_credits_pass, input_bits::write_input_bits, translation::run_translation_pass,
+};
 use proof_setup::generate_test_proof;
 
 #[derive(Debug)]

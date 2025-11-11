@@ -17,8 +17,6 @@ use kanal::{Sender, bounded_async};
 use lvl::types::CompactWireId;
 use monoio::{FusionDriver, RuntimeBuilder, select};
 
-use crate::u24::U24;
-
 pub struct TranslationMode {
     creds: Vec<u16>,
     next_normalized_id: u64,
