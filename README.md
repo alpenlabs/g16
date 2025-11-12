@@ -1,5 +1,7 @@
 # Garbled SNARK Verifier Circuit
 
+This repository is a snapshot of [BitVM/garbled-snark-verifier](https://github.com/BitVM/garbled-snark-verifier) from the BitVM Alliance. It is used for audit, testing, and experimentation.
+
 ## Gate Count Metrics
 
 Gate counts are automatically measured for k=6 (64 constraints) on every push to `main` and published as dynamic badges.
