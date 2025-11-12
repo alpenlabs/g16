@@ -988,6 +988,7 @@ pub fn ell_by_constant_montgomery<C: CircuitContext>(
     Fq12::mul_by_034_constant4_montgomery(circuit, f, &new_c0, &new_c1, &c2_m)
 }
 
+/// Analogous to Option<Fq12> where `is_valid` carries `false` if variable is None
 #[derive(Clone, Debug)]
 pub struct ValidFq12 {
     pub f: Fq12,
@@ -1039,6 +1040,8 @@ impl WiresArity for ValidFq12 {
     const ARITY: usize = Fq12::N_BITS + 1;
 }
 
+/// Returns result of MultiMillerLoop
+// `ValidFq12::is_valid` is true only if variable G2 element in input is a valid subgroup element in G2
 #[component(offcircuit_args = "q1,q2")]
 pub fn multi_miller_loop_groth16_evaluate_montgomery_fast<C: CircuitContext>(
     circuit: &mut C,
@@ -1138,6 +1141,7 @@ mod tests {
         (ark_bn254::G2Projective::generator() * rnd_fr(rng)).into_affine()
     }
 
+    // get valid point in curve that is not in subgroup
     fn random_g2_affine_sg(rng: &mut impl Rng) -> ark_bn254::G2Affine {
         let mut pt = ark_bn254::G2Affine::identity();
         for _ in 0..5 {
@@ -1735,8 +1739,34 @@ mod tests {
                 vec![valid]
             },
         );
+        assert!(
+            out.output_value[0],
+            "should be valid line coefficients and valid input G2 point"
+        );
 
-        assert!(out.output_value[0]);
+        for _ in 0..3 {
+            // iterating in case we sample a point that exactly lies on a subgroup on some try
+            let r = random_g2_affine_sg(&mut rng);
+            assert!(
+                r.is_on_curve(),
+                "random_g2_affine_sg should give a point on curve"
+            );
+            let out = CircuitBuilder::streaming_execute::<_, _, Vec<bool>>(
+                In {
+                    q: ark_bn254::G2Projective::new_unchecked(r.x, r.y, ark_bn254::Fq2::ONE),
+                },
+                50_000,
+                |ctx, wires| {
+                    let got = ell_coeffs_montgomery(ctx, &wires.q);
+                    vec![got.1]
+                },
+            );
+            // match validity of subgroup returned by circuit with that from input reference point
+            assert_eq!(
+                out.output_value[0],
+                r.is_in_correct_subgroup_assuming_on_curve()
+            );
+        }
     }
 
     #[test]

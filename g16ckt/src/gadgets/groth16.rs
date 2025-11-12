@@ -660,7 +660,7 @@ mod tests {
         r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     };
     use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
-    use rand::SeedableRng;
+    use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use test_log::test;
 
@@ -1146,8 +1146,6 @@ mod tests {
 
             assert_eq!(calc_is_valid, ref_is_valid);
             assert_eq!(calc_is_valid, pt.is_on_curve());
-            println!("is_in_g {}", pt.is_on_curve());
-            println!("is_in_sg {}", pt.is_in_correct_subgroup_assuming_on_curve());
         }
     }
 
@@ -1270,6 +1268,73 @@ mod tests {
             CircuitBuilder::streaming_execute(inputs, 80_000, groth16_verify_compressed);
 
         assert!(out.output_value);
+    }
+
+    #[test]
+    fn test_invalid_groth16_verify_compressed_true_small() {
+        // get valid point in curve that is not in subgroup
+        fn random_g2_affine_sg(rng: &mut impl Rng) -> ark_bn254::G2Affine {
+            let mut pt = ark_bn254::G2Affine::identity();
+            for _ in 0..5 {
+                // sufficient sample size to sample both valid and invalid points
+                let x = ark_bn254::Fq2::rand(rng);
+                let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+                let (y, ref_is_valid) = if let Some(a1) = a1 {
+                    // if it is possible to take square root, you have found correct y,
+                    (a1, true)
+                } else {
+                    // else generate some random value
+                    (ark_bn254::Fq2::rand(rng), false)
+                };
+                if ref_is_valid {
+                    pt = ark_bn254::G2Affine::new_unchecked(x, y);
+                    break;
+                }
+            }
+            return pt;
+        }
+
+        let k = 4; // circuit size; pairing cost dominates anyway
+        let mut rng = ChaCha20Rng::seed_from_u64(33333);
+        let circuit = DummyCircuit::<ark_bn254::Fr> {
+            a: Some(ark_bn254::Fr::rand(&mut rng)),
+            b: Some(ark_bn254::Fr::rand(&mut rng)),
+            num_variables: 8,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).unwrap();
+        let c_val = circuit.a.unwrap() * circuit.b.unwrap();
+        let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+
+        // Case 1: Check that the proof is correct to begin with
+        let inputs = Groth16VerifyInput {
+            public: vec![c_val],
+            a: proof.a.into_group(),
+            b: proof.b.into_group(),
+            c: proof.c.into_group(),
+            vk: vk.clone(),
+        }
+        .compress();
+
+        let out: crate::circuit::StreamingResult<_, _, bool> =
+            CircuitBuilder::streaming_execute(inputs, 160_000, groth16_verify_compressed);
+
+        assert!(out.output_value, "should pass");
+
+        // Case 2: Check for invalid proof
+        let inputs = Groth16VerifyInput {
+            public: vec![c_val],
+            a: proof.a.into_group(),
+            b: random_g2_affine_sg(&mut rng).into_group(), // proof.b.into_group()
+            c: proof.c.into_group(),
+            vk,
+        }
+        .compress();
+
+        let out: crate::circuit::StreamingResult<_, _, bool> =
+            CircuitBuilder::streaming_execute(inputs, 160_000, groth16_verify_compressed);
+
+        assert!(!out.output_value, "should fail because invalid G2");
     }
 
     // Unified small verifier runner to avoid duplication across flows and bitflips

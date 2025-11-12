@@ -330,13 +330,27 @@ mod tests {
                 final_exponentiation_montgomery(ctx, &input.f)
             });
 
+        assert!(
+            result.output_value.valid,
+            "final_exponentiation_montgomery input should be valid"
+        );
         assert_eq!(
             result.output_value.value, expected_m,
             "final_exponentiation_montgomery output should be valid"
         );
+
+        // Test for non-invertible element
+        let input = In {
+            f: ark_bn254::Fq12::ZERO,
+        };
+        let result: StreamingResult<_, _, Out> =
+            CircuitBuilder::streaming_execute(input, 10_000, |ctx, input| {
+                final_exponentiation_montgomery(ctx, &input.f)
+            });
+
         assert!(
-            result.output_value.valid,
-            "final_exponentiation_montgomery input should be valid"
+            !result.output_value.valid,
+            "final_exponentiation_montgomery input should be invalid"
         );
     }
 }
