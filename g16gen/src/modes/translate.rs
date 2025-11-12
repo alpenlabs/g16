@@ -29,6 +29,7 @@ pub struct TranslationMode {
     pb: ProgressBar,
     prod: Producer<GateV5a>,
     stop: Option<Sender<()>>,
+    writer_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl std::fmt::Debug for TranslationMode {
@@ -84,7 +85,7 @@ impl TranslationMode {
         let pb = ProgressBar::new(creds.len() as u64);
 
         let path = PathBuf::from_str(path).unwrap();
-        std::thread::spawn(move || {
+        let thread_handle = std::thread::spawn(move || {
             RuntimeBuilder::<FusionDriver>::new()
                 .enable_all()
                 .build()
@@ -119,6 +120,7 @@ impl TranslationMode {
             true_wire_id: CompactWireId::from_u64(1),
             prod,
             stop: Some(stop_tx.to_sync()),
+            writer_handle: Some(thread_handle),
         };
 
         // Reserve normalized IDs for constants
@@ -130,6 +132,7 @@ impl TranslationMode {
 
     pub fn finish(&mut self) {
         self.stop.take().unwrap().send(()).unwrap();
+        self.writer_handle.take().unwrap().join().unwrap();
         self.pb.finish();
     }
 
