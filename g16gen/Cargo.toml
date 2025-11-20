@@ -3,15 +3,11 @@ name = "g16gen"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-nightly = ["roaring/simd"]
-
 [dependencies]
 ahash = "0.8.12"
 ckt = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
 indicatif = "0.18.0"
 lvl = { git = "https://github.com/alpenlabs/ckt"}
-roaring = "0.11.2"
 g16ckt = { path = "../g16ckt" }
 tracing = "0.1.41"
 rand = "0.8" # using old version for consistency with ark

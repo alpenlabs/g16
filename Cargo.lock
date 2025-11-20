@@ -900,7 +900,6 @@ dependencies = [
  "monoio",
  "rand",
  "rand_chacha",
- "roaring",
  "tracing",
  "tracing-subscriber 0.3.20",
 ]
