@@ -922,7 +922,7 @@ mod tests {
             let pt = ark_bn254::G2Affine::new_unchecked(x, y);
 
             let pt = pt.into_group();
-            const COFACTOR: &'static [u64] = &[
+            const COFACTOR: &[u64] = &[
                 0x345f2299c0f9fa8d,
                 0x06ceecda572a2489,
                 0xb85045b68181585e,

@@ -1160,7 +1160,7 @@ mod tests {
                 break;
             }
         }
-        return pt;
+        pt
     }
 
     #[test]

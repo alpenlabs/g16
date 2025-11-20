@@ -695,8 +695,7 @@ pub(super) mod tests {
                 CircuitBuilder::streaming_execute::<_, _, FqOutput>(input, 10_000, |ctx, input| {
                     let [aa_wire] = input;
                     let sqrt = Fq::sqrt_montgomery(ctx, aa_wire);
-                    let sqr = Fq::square_montgomery(ctx, &sqrt);
-                    sqr
+                    Fq::square_montgomery(ctx, &sqrt)
                 });
 
             let calc_aa_montgomery = result.output_value.value;
