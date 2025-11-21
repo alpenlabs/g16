@@ -17,15 +17,13 @@ use kanal::{Sender, bounded_async};
 use lvl::types::CompactWireId;
 use monoio::{FusionDriver, RuntimeBuilder, select};
 
-use crate::u24::U24;
-
 pub struct TranslationMode {
     creds: Vec<u16>,
     next_normalized_id: u64,
 
     // Constants
-    false_wire_id: CompactWireId, // Normalized ID for FALSE
-    true_wire_id: CompactWireId,  // Normalized ID for TRUE (our ONE wire)
+    _false_wire_id: CompactWireId, // Normalized ID for FALSE
+    true_wire_id: CompactWireId,   // Normalized ID for TRUE (our ONE wire)
     pb: ProgressBar,
     prod: Producer<GateV5a>,
     stop: Option<Sender<()>>,
@@ -115,7 +113,7 @@ impl TranslationMode {
             creds,
             pb,
             next_normalized_id: 0,
-            false_wire_id: CompactWireId::from_u64(0),
+            _false_wire_id: CompactWireId::from_u64(0),
             true_wire_id: CompactWireId::from_u64(1),
             prod,
             stop: Some(stop_tx.to_sync()),
@@ -165,9 +163,8 @@ impl TranslationMode {
         let in1 = CompactWireId::from_u64(gate.wire_a.0 as u64);
         let in2 = CompactWireId::from_u64(gate.wire_b.0 as u64);
         let out = CompactWireId::from_u64(gate.wire_c.0 as u64);
-        let allocate_id = |mode: &mut TranslationMode| {
-            CompactWireId::from_u64(mode.allocate_normalized_id() as u64)
-        };
+        let allocate_id =
+            |mode: &mut TranslationMode| CompactWireId::from_u64(mode.allocate_normalized_id());
         use SourceGateType::*;
         match gate.gate_type {
             // Direct mappings

@@ -1,13 +1,14 @@
-use crate::modes::translate::TranslationMode;
-use crate::u24::U24;
+use std::time::Instant;
+
 use g16ckt::{
     WireId,
     circuit::{StreamingMode, component_meta::ComponentMetaBuilder},
     gadgets::groth16::Groth16VerifyCompressedInput,
     groth16_verify_compressed,
 };
-use std::time::Instant;
 use tracing::info;
+
+use crate::modes::translate::TranslationMode;
 
 const OUTPUT_FILE: &str = "g16.ckt";
 
@@ -30,7 +31,7 @@ pub async fn run_translation_pass(
     let metadata_time = metadata_start.elapsed();
     println!("Translation metadata time: {:?}", metadata_time);
 
-    let meta_output_wires = meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>();
+    let meta_output_wires = meta_output_wires.to_vec();
 
     let (mut ctx, allocated_inputs) = metadata_mode.to_root_ctx(
         TranslationMode::new(

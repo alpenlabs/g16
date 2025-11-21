@@ -1,7 +1,9 @@
-use crate::u24::U24;
+use std::{
+    fs::OpenOptions,
+    io::{BufReader, BufWriter, Read, Write},
+};
+
 use g16ckt::WireId;
-use std::fs::OpenOptions;
-use std::io::{BufReader, BufWriter, Read, Write};
 
 const FANOUT_FILE: &str = "fanout.cache";
 const OUTPUT_WIRES_FILE: &str = "outputs.cache";

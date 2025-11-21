@@ -1,4 +1,4 @@
-use crate::modes::fanout_ctr::FanoutCounter;
+use std::time::Instant;
 
 use g16ckt::{
     WireId,
@@ -6,8 +6,9 @@ use g16ckt::{
     gadgets::groth16::Groth16VerifyCompressedInput,
     groth16_verify_compressed,
 };
-use std::time::Instant;
 use tracing::info;
+
+use crate::modes::fanout_ctr::FanoutCounter;
 
 /// Run the credits pass to compute wire credits
 pub fn run_credits_pass(
@@ -30,7 +31,7 @@ pub fn run_credits_pass(
     let (mut ctx, allocated_inputs) = metadata_mode.to_root_ctx(
         FanoutCounter::new(primary_input_count),
         inputs,
-        &meta_output_wires.iter().map(|&w| w).collect::<Vec<_>>(),
+        &meta_output_wires.to_vec(),
     );
 
     let credits_start = Instant::now();

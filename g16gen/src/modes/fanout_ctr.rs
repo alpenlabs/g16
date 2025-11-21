@@ -27,7 +27,7 @@ impl CircuitMode for FanoutCounter {
 
     fn allocate_wire(&mut self, _credits: SourceCredits) -> WireId {
         let normalized_id = self.allocate_normalized_id() as usize;
-        WireId(normalized_id as usize)
+        WireId(normalized_id)
     }
 
     fn lookup_wire(&mut self, _wire: WireId) -> Option<Self::WireValue> {
@@ -43,7 +43,7 @@ impl CircuitMode for FanoutCounter {
     fn evaluate_gate(&mut self, gate: &SourceGate) {
         self.spinner.inc(1);
 
-        let mut resize = |fanout: &mut Vec<u16>, max_wire_produced: usize| {
+        let resize = |fanout: &mut Vec<u16>, max_wire_produced: usize| {
             if max_wire_produced >= fanout.len() {
                 fanout.resize(max_wire_produced + 1, 0);
             }
@@ -53,13 +53,13 @@ impl CircuitMode for FanoutCounter {
         match gate.gate_type {
             // no translation
             GateType::And => {
-                resize(&mut self.fanout.as_mut().unwrap(), gate.wire_c.0);
+                resize(self.fanout.as_mut().unwrap(), gate.wire_c.0);
                 self.wire_used(gate.wire_a);
                 self.wire_used(gate.wire_b);
             }
             // no translation
             GateType::Xor => {
-                resize(&mut self.fanout.as_mut().unwrap(), gate.wire_c.0);
+                resize(self.fanout.as_mut().unwrap(), gate.wire_c.0);
                 self.wire_used(gate.wire_a);
                 self.wire_used(gate.wire_b);
             }
@@ -70,7 +70,7 @@ impl CircuitMode for FanoutCounter {
             // XOR(a, ONE)
             GateType::Nand => {
                 let temp = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp as usize);
+                resize(self.fanout.as_mut().unwrap(), temp as usize);
                 self.wire_used(gate.wire_a);
                 self.wire_used(gate.wire_b);
                 self.wire_used(WireId(temp as usize));
@@ -79,7 +79,7 @@ impl CircuitMode for FanoutCounter {
             //  XOR(XOR(a, b), ONE)
             GateType::Xnor => {
                 let temp = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp as usize);
+                resize(self.fanout.as_mut().unwrap(), temp as usize);
                 self.wire_used(gate.wire_a);
                 self.wire_used(gate.wire_b);
                 self.wire_used(WireId(temp as usize));
@@ -89,7 +89,7 @@ impl CircuitMode for FanoutCounter {
             GateType::Or => {
                 let temp1 = self.allocate_normalized_id();
                 let temp2 = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp2 as usize);
+                resize(self.fanout.as_mut().unwrap(), temp2 as usize);
                 self.wire_used(gate.wire_a);
                 self.wire_used(gate.wire_b);
                 self.wire_used(WireId(temp1 as usize));
@@ -102,7 +102,7 @@ impl CircuitMode for FanoutCounter {
                 let temp1 = self.allocate_normalized_id();
                 let temp2 = self.allocate_normalized_id();
                 let temp3 = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp3 as usize);
+                resize(self.fanout.as_mut().unwrap(), temp3 as usize);
                 self.wire_used(gate.wire_a);
                 self.wire_used(gate.wire_b);
                 self.wire_used(WireId(temp1 as usize));
@@ -115,7 +115,7 @@ impl CircuitMode for FanoutCounter {
             // AND(a, XOR(b, ONE))
             GateType::Nimp => {
                 let temp = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp as usize);
+                resize(self.fanout.as_mut().unwrap(), temp as usize);
                 self.wire_used(gate.wire_b);
                 // ONE is constant, don't count
                 self.wire_used(gate.wire_a);
@@ -124,7 +124,7 @@ impl CircuitMode for FanoutCounter {
             // AND(XOR(a, ONE), b)
             GateType::Ncimp => {
                 let temp = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp as usize);
+                resize(self.fanout.as_mut().unwrap(), temp as usize);
                 self.wire_used(gate.wire_a);
                 // ONE is constant, don't count
                 self.wire_used(WireId(temp as usize));
@@ -135,7 +135,7 @@ impl CircuitMode for FanoutCounter {
                 let temp1 = self.allocate_normalized_id();
                 let temp2 = self.allocate_normalized_id();
                 let temp3 = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp3 as usize);
+                resize(self.fanout.as_mut().unwrap(), temp3 as usize);
                 self.wire_used(gate.wire_a);
                 // ONE is constant, don't count
                 self.wire_used(WireId(temp1 as usize));
@@ -150,7 +150,7 @@ impl CircuitMode for FanoutCounter {
                 let temp1 = self.allocate_normalized_id();
                 let temp2 = self.allocate_normalized_id();
                 let temp3 = self.allocate_normalized_id();
-                resize(&mut self.fanout.as_mut().unwrap(), temp3 as usize);
+                resize(self.fanout.as_mut().unwrap(), temp3 as usize);
                 self.wire_used(gate.wire_b);
                 // ONE is constant, don't count
                 self.wire_used(WireId(temp1 as usize));
