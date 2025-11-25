@@ -1576,7 +1576,7 @@ mod tests {
 
     // verify groth16 proof end-to-end
     // use raw public input to generate groth16-public-input
-    // meant to mimick how public inputs are handled by zkvms
+    // meant to mimic how public inputs are handled by zkvms
     #[test]
     fn test_groth16_verify_compressed_true_small_for_raw_public_input() {
         let mut rng = ChaCha20Rng::seed_from_u64(33333);
