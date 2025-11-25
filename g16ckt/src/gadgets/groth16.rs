@@ -889,7 +889,6 @@ mod tests {
         lc,
         r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     };
-    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
@@ -1566,6 +1565,67 @@ mod tests {
             CircuitBuilder::streaming_execute(inputs, 160_000, groth16_verify_compressed);
 
         assert!(!out.output_value, "should fail because invalid G2");
+    }
+
+    fn convert_hash_to_bigint(raw_public_input_hash: blake3::Hash) -> ark_bn254::Fr {
+        let mut raw_public_input_hash = *raw_public_input_hash.as_bytes();
+        raw_public_input_hash[0] &= 0b00011111; // mask top 3 bits to fit within scalar field
+        let c_val = ark_bn254::Fr::from_be_bytes_mod_order(&raw_public_input_hash);
+        c_val
+    }
+
+    // verify groth16 proof end-to-end
+    // use raw public input to generate groth16-public-input
+    // meant to mimick how public inputs are handled by zkvms
+    #[test]
+    fn test_groth16_verify_compressed_true_small_for_raw_public_input() {
+        let mut rng = ChaCha20Rng::seed_from_u64(33333);
+
+        // prover computes groth-public-input directly using raw_public_input
+        // in practice, these random bytes could be values like deposit index, public key
+        let raw_public_input: [u8; 40] = std::array::from_fn(|_| rng.r#gen());
+
+        let raw_public_input_hash = blake3::hash(&raw_public_input);
+        let c_val = convert_hash_to_bigint(raw_public_input_hash);
+
+        let b = ark_bn254::Fr::rand(&mut rng);
+        let binv = b.inverse().unwrap();
+        let a = c_val * binv; // should satisfy constraint: a * b = c
+
+        let k = 4;
+        let circuit = DummyCircuit::<ark_bn254::Fr> {
+            a: Some(a),
+            b: Some(b),
+            num_variables: 8,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).unwrap();
+
+        let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+
+        let inputs = Groth16ExecRawInputCompressedRaw {
+            public: InputMessage {
+                byte_arr: raw_public_input,
+            },
+            a: proof.a.into_group(),
+            b: proof.b.into_group(),
+            c: proof.c.into_group(),
+        };
+
+        let out: StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
+                let ok = groth16_verify_compressed_over_raw(
+                    ctx,
+                    &wires.public,
+                    &wires.a,
+                    &wires.b,
+                    &wires.c,
+                    &vk,
+                );
+                vec![ok]
+            });
+
+        assert!(out.output_value[0]);
     }
 
     // Unified small verifier runner to avoid duplication across flows and bitflips
