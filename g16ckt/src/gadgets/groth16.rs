@@ -16,8 +16,13 @@ use crate::{
     gadgets::{
         bigint,
         bn254::{
-            G2Projective, final_exponentiation::final_exponentiation_montgomery, fq::Fq,
-            fq12::Fq12, fr::Fr, g1::G1Projective,
+            G2Projective,
+            final_exponentiation::final_exponentiation_montgomery,
+            fq::Fq,
+            fq12::Fq12,
+            fr::Fr,
+            g1::{DecompressedG1Wires, G1Projective},
+            g2::DecompressedG2Wires,
             pairing::multi_miller_loop_groth16_evaluate_montgomery_fast,
         },
     },
@@ -125,7 +130,7 @@ pub fn groth16_verify<C: CircuitContext>(
 pub fn decompress_g1_from_compressed<C: CircuitContext>(
     circuit: &mut C,
     compressed: &CompressedG1Wires,
-) -> G1Projective {
+) -> DecompressedG1Wires {
     let CompressedG1Wires { x_m, y_flag } = compressed.clone();
 
     // rhs = x^3 + b (Montgomery domain)
@@ -136,6 +141,10 @@ pub fn decompress_g1_from_compressed<C: CircuitContext>(
 
     // sy = sqrt(rhs) in Montgomery domain
     let sy = Fq::sqrt_montgomery(circuit, &rhs);
+    // check if sy * sy == rhs to ensure rhs was a quadratic residue to begin with
+    let sy_sy = Fq::square_montgomery(circuit, &sy);
+    let rhs_is_qr = bigint::equal(circuit, &sy_sy, &rhs);
+
     let sy_neg = Fq::neg(circuit, &sy);
     let y_bits = bigint::select(circuit, &sy.0, &sy_neg.0, y_flag);
     let y = Fq(y_bits);
@@ -144,10 +153,13 @@ pub fn decompress_g1_from_compressed<C: CircuitContext>(
     let one_m = Fq::as_montgomery(ark_bn254::Fq::ONE);
     let z = Fq::new_constant(&one_m).expect("const one mont");
 
-    G1Projective {
-        x: x_m.clone(),
-        y,
-        z,
+    DecompressedG1Wires {
+        point: G1Projective {
+            x: x_m.clone(),
+            y,
+            z,
+        },
+        is_valid: rhs_is_qr,
     }
 }
 
@@ -155,7 +167,7 @@ pub fn decompress_g1_from_compressed<C: CircuitContext>(
 pub fn decompress_g2_from_compressed<C: CircuitContext>(
     circuit: &mut C,
     compressed: &CompressedG2Wires,
-) -> G2Projective {
+) -> DecompressedG2Wires {
     let CompressedG2Wires { p: x, y_flag } = compressed;
 
     let x2 = Fq2Wire::square_montgomery(circuit, x);
@@ -169,6 +181,21 @@ pub fn decompress_g2_from_compressed<C: CircuitContext>(
     );
 
     let y = Fq2Wire::sqrt_general_montgomery(circuit, &y2);
+    let rhs_is_qr = {
+        // check if y * y == y2 to ensure rhs was a quadratic residue to begin with
+        let y_y = Fq2Wire::square_montgomery(circuit, &y);
+
+        let match_c0 = bigint::equal(circuit, y2.c0(), y_y.c0());
+        let match_c1 = bigint::equal(circuit, y2.c1(), y_y.c1());
+        let match_c0_and_c1 = circuit.issue_wire();
+        circuit.add_gate(crate::Gate {
+            wire_a: match_c0,
+            wire_b: match_c1,
+            wire_c: match_c0_and_c1,
+            gate_type: crate::GateType::And,
+        });
+        match_c0_and_c1
+    };
 
     let neg_y = Fq2Wire::neg(circuit, y.clone());
 
@@ -177,16 +204,18 @@ pub fn decompress_g2_from_compressed<C: CircuitContext>(
 
     // z = 1 in Montgomery
     let one_m = Fq::as_montgomery(ark_bn254::Fq::ONE);
+    let one_m = Fq::new_constant(&one_m).expect("const one mont");
     let zero_m = Fq::as_montgomery(ark_bn254::Fq::ZERO);
+    let zero_m = Fq::new_constant(&zero_m).expect("const zero mont");
 
-    G2Projective {
-        x: x.clone(),
-        y: Fq2Wire([Fq(final_y_0), Fq(final_y_1)]),
-        // In Fq2, ONE is (c0=1, c1=0). Use Montgomery representation.
-        z: Fq2Wire([
-            Fq::new_constant(&one_m).unwrap(),
-            Fq::new_constant(&zero_m).unwrap(),
-        ]),
+    DecompressedG2Wires {
+        point: G2Projective {
+            x: x.clone(),
+            y: Fq2Wire([Fq(final_y_0), Fq(final_y_1)]),
+            // In Fq2, ONE is (c0=1, c1=0). Use Montgomery representation.
+            z: Fq2Wire([one_m, zero_m]),
+        },
+        is_valid: rhs_is_qr,
     }
 }
 
@@ -264,16 +293,44 @@ pub fn groth16_verify_compressed<C: CircuitContext>(
     let b = decompress_g2_from_compressed(circuit, &input.b);
     let c = decompress_g1_from_compressed(circuit, &input.c);
 
-    groth16_verify(
+    let valid_decompressed = {
+        let tmp0 = circuit.issue_wire();
+        let tmp1 = circuit.issue_wire();
+
+        circuit.add_gate(crate::Gate {
+            wire_a: a.is_valid,
+            wire_b: b.is_valid,
+            wire_c: tmp0,
+            gate_type: crate::GateType::And,
+        });
+        circuit.add_gate(crate::Gate {
+            wire_a: tmp0,
+            wire_b: c.is_valid,
+            wire_c: tmp1,
+            gate_type: crate::GateType::And,
+        });
+        tmp1
+    };
+
+    let verified_res = groth16_verify(
         circuit,
         &Groth16VerifyInputWires {
             public: input.public.clone(),
-            a,
-            b,
-            c,
+            a: a.point,
+            b: b.point,
+            c: c.point,
             vk: input.vk.clone(),
         },
-    )
+    );
+
+    let valid = circuit.issue_wire();
+    circuit.add_gate(crate::Gate {
+        wire_a: verified_res,
+        wire_b: valid_decompressed,
+        wire_c: valid,
+        gate_type: crate::GateType::And,
+    });
+    valid
 }
 
 #[derive(Debug, Clone)]
@@ -508,7 +565,7 @@ mod tests {
         r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     };
     use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
-    use rand::SeedableRng;
+    use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use test_log::test;
 
@@ -896,7 +953,8 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
-                let dec = decompress_g1_from_compressed(ctx, wires);
+                let res = decompress_g1_from_compressed(ctx, wires);
+                let dec = res.point;
 
                 let exp = G1Projective::as_montgomery(p.into_group());
                 let x_ok = Fq::equal_constant(ctx, &dec.x, &exp.x);
@@ -906,10 +964,39 @@ mod tests {
                 let exp_y_std = Fq::from_montgomery(exp.y);
                 let exp_y_sq_m = Fq::as_montgomery(exp_y_std.square());
                 let y_ok = Fq::equal_constant(ctx, &y_sq, &exp_y_sq_m);
-                vec![x_ok, y_ok, z_ok]
+                vec![x_ok, y_ok, z_ok, res.is_valid]
             });
 
         assert!(out.output_value.iter().all(|&b| b));
+    }
+
+    #[test]
+    fn test_g1_decompress_failure() {
+        let mut rng = ChaCha20Rng::seed_from_u64(112);
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq::rand(&mut rng);
+            let a1 = ark_bn254::Fq::sqrt(&((x * x * x) + ark_bn254::Fq::from(3)));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq::rand(&mut rng), false)
+            };
+            let pt = ark_bn254::G1Affine::new_unchecked(x, y);
+
+            let input = OnlyCompressedG1Input(pt);
+            let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
+                CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
+                    let dec = decompress_g1_from_compressed(ctx, wires);
+                    vec![dec.is_valid]
+                });
+            let calc_is_valid = out.output_value[0];
+
+            assert_eq!(calc_is_valid, ref_is_valid);
+            assert_eq!(calc_is_valid, pt.is_on_curve());
+        }
     }
 
     #[test]
@@ -922,7 +1009,8 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(input, 20_000, |ctx, wires| {
-                let dec = decompress_g2_from_compressed(ctx, wires);
+                let res = decompress_g2_from_compressed(ctx, wires);
+                let dec = res.point;
 
                 let exp = G2Projective::as_montgomery(p.into_group());
                 let x_ok = Fq2Wire::equal_constant(ctx, &dec.x, &exp.x);
@@ -932,10 +1020,72 @@ mod tests {
                 let exp_y_std = Fq2Wire::from_montgomery(exp.y);
                 let exp_y_sq_m = Fq2Wire::as_montgomery(exp_y_std.square());
                 let y_ok = Fq2Wire::equal_constant(ctx, &y_sq, &exp_y_sq_m);
-                vec![x_ok, y_ok, z_ok]
+                vec![x_ok, y_ok, z_ok, res.is_valid]
             });
 
         assert!(out.output_value.iter().all(|&b| b));
+    }
+
+    #[test]
+    fn test_g2_decompress_failure() {
+        let mut rng = ChaCha20Rng::seed_from_u64(112);
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq2::rand(&mut rng);
+            let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq2::rand(&mut rng), false)
+            };
+            let pt = ark_bn254::G2Affine::new_unchecked(x, y);
+
+            let input = OnlyCompressedG2Input(pt);
+            let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
+                CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
+                    let dec = decompress_g2_from_compressed(ctx, wires);
+                    vec![dec.is_valid]
+                });
+            let calc_is_valid = out.output_value[0];
+
+            assert_eq!(calc_is_valid, ref_is_valid);
+            assert_eq!(calc_is_valid, pt.is_on_curve());
+        }
+    }
+
+    #[test]
+    fn test_cofactor_clearing() {
+        let mut rng = ChaCha20Rng::seed_from_u64(112);
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq2::rand(&mut rng);
+            let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq2::rand(&mut rng), false)
+            };
+            let pt = ark_bn254::G2Affine::new_unchecked(x, y);
+
+            let pt = pt.into_group();
+            const COFACTOR: &[u64] = &[
+                0x345f2299c0f9fa8d,
+                0x06ceecda572a2489,
+                0xb85045b68181585e,
+                0x30644e72e131a029,
+            ];
+            let pt = pt.mul_bigint(COFACTOR);
+            let pt = pt.into_affine();
+            // if it's a valid point, it should be on curve and subgroup (after cofactor clearing)
+            assert_eq!(
+                ref_is_valid,
+                pt.is_on_curve() && pt.is_in_correct_subgroup_assuming_on_curve()
+            );
+        }
     }
 
     #[test]
@@ -961,9 +1111,13 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
-                let a_dec = decompress_g1_from_compressed(ctx, &wires.a);
-                let b_dec = decompress_g2_from_compressed(ctx, &wires.b);
-                let c_dec = decompress_g1_from_compressed(ctx, &wires.c);
+                let a = decompress_g1_from_compressed(ctx, &wires.a);
+                let b = decompress_g2_from_compressed(ctx, &wires.b);
+                let c = decompress_g1_from_compressed(ctx, &wires.c);
+
+                let a_dec = a.point;
+                let b_dec = b.point;
+                let c_dec = c.point;
 
                 let a_exp = G1Projective::as_montgomery(proof.a.into_group());
                 let b_exp = G2Projective::as_montgomery(proof.b.into_group());
@@ -983,10 +1137,79 @@ mod tests {
 
                 vec![
                     a_x_ok, a_y_ok, a_z_ok, b_x_ok, b_y_ok, b_z_ok, c_x_ok, c_y_ok, c_z_ok,
+                    a.is_valid, b.is_valid, c.is_valid,
                 ]
             });
 
         assert!(out.output_value.iter().all(|&b| b));
+    }
+
+    #[test]
+    fn test_invalid_groth16_verify_compressed_true_small() {
+        // get valid point in curve that is not in subgroup
+        fn random_g2_affine_sg(rng: &mut impl Rng) -> ark_bn254::G2Affine {
+            let mut pt = ark_bn254::G2Affine::identity();
+            for _ in 0..5 {
+                // sufficient sample size to sample both valid and invalid points
+                let x = ark_bn254::Fq2::rand(rng);
+                let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+                let (y, ref_is_valid) = if let Some(a1) = a1 {
+                    // if it is possible to take square root, you have found correct y,
+                    (a1, true)
+                } else {
+                    // else generate some random value
+                    (ark_bn254::Fq2::rand(rng), false)
+                };
+                if ref_is_valid {
+                    pt = ark_bn254::G2Affine::new_unchecked(x, y);
+                    break;
+                }
+            }
+            pt
+        }
+
+        let k = 4; // circuit size; pairing cost dominates anyway
+        let mut rng = ChaCha20Rng::seed_from_u64(33333);
+        let circuit = DummyCircuit::<ark_bn254::Fr> {
+            a: Some(ark_bn254::Fr::rand(&mut rng)),
+            b: Some(ark_bn254::Fr::rand(&mut rng)),
+            num_variables: 8,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<ark_bn254::Bn254>::setup(circuit, &mut rng).unwrap();
+        let c_val = circuit.a.unwrap() * circuit.b.unwrap();
+        let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
+
+        // Case 1: Check that the proof is correct to begin with
+        let inputs = Groth16VerifyInput {
+            public: vec![c_val],
+            a: proof.a.into_group(),
+            b: proof.b.into_group(),
+            c: proof.c.into_group(),
+            vk: vk.clone(),
+        }
+        .compress();
+
+        let out: crate::circuit::StreamingResult<_, _, bool> =
+            CircuitBuilder::streaming_execute(inputs, 160_000, groth16_verify_compressed);
+
+        assert!(out.output_value, "should pass");
+
+        // Case 2: Check for invalid proof
+        let inputs = Groth16VerifyInput {
+            public: vec![c_val],
+
+            a: proof.a.into_group(),
+            b: random_g2_affine_sg(&mut rng).into_group(), // proof.b.into_group()
+            c: proof.c.into_group(),
+            vk,
+        }
+        .compress();
+
+        let out: crate::circuit::StreamingResult<_, _, bool> =
+            CircuitBuilder::streaming_execute(inputs, 160_000, groth16_verify_compressed);
+
+        assert!(!out.output_value, "should fail because invalid G2");
     }
 
     // Full end-to-end compressed Groth16 verification. This is heavy because it

@@ -5,7 +5,7 @@ use circuit_component_macro::component;
 
 use crate::{
     CircuitContext, WireId,
-    circuit::{FromWires, WiresObject},
+    circuit::{FromWires, WiresArity, WiresObject},
     gadgets::bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr},
 };
 
@@ -407,6 +407,42 @@ impl G1Projective {
             z: p.z.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct DecompressedG1Wires {
+    pub point: G1Projective,
+    pub is_valid: WireId,
+}
+
+impl WiresObject for DecompressedG1Wires {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut wires = Vec::new();
+        wires.extend(self.point.to_wires_vec());
+        wires.push(self.is_valid);
+        wires
+    }
+
+    fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        Self {
+            point: self.point.clone_from(&mut wire_gen),
+            is_valid: wire_gen(),
+        }
+    }
+}
+
+impl FromWires for DecompressedG1Wires {
+    fn from_wires(wires: &[WireId]) -> Option<Self> {
+        assert_eq!(wires.len(), DecompressedG1Wires::ARITY);
+        Some(Self {
+            point: G1Projective::from_wires(&wires[0..G1Projective::N_BITS])?,
+            is_valid: wires[G1Projective::N_BITS],
+        })
+    }
+}
+
+impl WiresArity for DecompressedG1Wires {
+    const ARITY: usize = G1Projective::N_BITS + 1;
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use circuit_component_macro::component;
 
 use crate::{
     CircuitContext, WireId,
-    circuit::{FromWires, WiresObject},
+    circuit::{FromWires, WiresArity, WiresObject},
     gadgets::{
         bigint::Error,
         bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, fr::Fr},
@@ -526,6 +526,42 @@ impl G2Projective {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DecompressedG2Wires {
+    pub point: G2Projective,
+    pub is_valid: WireId,
+}
+
+impl WiresObject for DecompressedG2Wires {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut wires = Vec::new();
+        wires.extend(self.point.to_wires_vec());
+        wires.push(self.is_valid);
+        wires
+    }
+
+    fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        Self {
+            point: self.point.clone_from(&mut wire_gen),
+            is_valid: wire_gen(),
+        }
+    }
+}
+
+impl FromWires for DecompressedG2Wires {
+    fn from_wires(wires: &[WireId]) -> Option<Self> {
+        assert_eq!(wires.len(), DecompressedG2Wires::ARITY);
+        Some(Self {
+            point: G2Projective::from_wires(&wires[0..G2Projective::N_BITS])?,
+            is_valid: wires[G2Projective::N_BITS],
+        })
+    }
+}
+
+impl WiresArity for DecompressedG2Wires {
+    const ARITY: usize = G2Projective::N_BITS + 1;
+}
+
 #[cfg(test)]
 mod tests {
     use ark_ec::{
@@ -538,6 +574,7 @@ mod tests {
     use super::*;
     use crate::{
         circuit::{CircuitBuilder, CircuitInput, EncodeInput, modes::CircuitMode},
+        gadgets::bn254::pairing::double_in_place,
         test_utils::trng,
     };
 
@@ -692,6 +729,33 @@ mod tests {
 
         let actual_result = G2Projective::from_bits_unchecked(result.output_value.clone());
         assert_eq!(actual_result, c_mont);
+    }
+
+    #[test]
+    fn test_double_in_place() {
+        use ark_ec::CurveGroup;
+
+        let mut rng = ChaCha20Rng::seed_from_u64(42);
+
+        // a is in Jacobian
+        let a = ark_bn254::G2Projective::rand(&mut rng);
+
+        // Jacobian doubling via library, then to affine
+        let b_aff = (a + a).into_affine();
+
+        // Start from affine (x,y,1) but run HOMOGENEOUS doubling
+        let a_aff = a.into_affine();
+        let mut r = ark_bn254::G2Projective::new(a_aff.x, a_aff.y, ark_bn254::Fq2::ONE);
+        double_in_place(&mut r); // r = (X,Y,Z) in HOMOGENEOUS
+
+        // Convert HOMOGENEOUS -> JACOBIAN expected by arkworks:
+        r.x *= r.z; // X' = X*Z
+        let z2 = r.z.square();
+        r.y *= z2; // Y' = Y*Z^2
+        // Z' = Z
+
+        let r_aff = r.into_affine(); // now safe to normalize
+        assert_eq!(b_aff, r_aff);
     }
 
     #[test]
