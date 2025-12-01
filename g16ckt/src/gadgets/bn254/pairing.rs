@@ -19,11 +19,14 @@ use ark_ff::{AdditiveGroup, Field};
 use circuit_component_macro::component;
 
 use crate::{
-    CircuitContext, Fp254Impl,
-    circuit::{FromWires, OffCircuitParam, WiresArity, WiresObject},
-    gadgets::bn254::{
-        final_exponentiation::final_exponentiation_montgomery, fq::Fq, fq2::Fq2, fq6::Fq6,
-        fq12::Fq12, g1::G1Projective, g2::G2Projective,
+    CircuitContext, Fp254Impl, WireId,
+    circuit::{FromWires, OffCircuitParam, TRUE_WIRE, WiresArity, WiresObject},
+    gadgets::{
+        bigint,
+        bn254::{
+            final_exponentiation::final_exponentiation_montgomery, fq::Fq, fq2::Fq2, fq6::Fq6,
+            fq12::Fq12, g1::G1Projective, g2::G2Projective,
+        },
     },
 };
 
@@ -504,7 +507,12 @@ pub fn mul_by_char_montgomery(circuit: &mut impl CircuitContext, r: &G2Projectiv
 /// the order used by arkworks' BN254 prepared coefficients (ell_0, ell_vw, ell_vv). The sequence
 /// contains one triple per doubling step and, conditionally, one per addition step depending on
 /// the signed bits of `ATE_LOOP_COUNT`, followed by two final frobenius-based additions.
-pub fn ell_coeffs_montgomery<C: CircuitContext>(circuit: &mut C, q: &G2Projective) -> Vec<Fq6> {
+///
+/// Returns a flag indicating whether the point 'q' is in subgroup
+pub fn ell_coeffs_montgomery<C: CircuitContext>(
+    circuit: &mut C,
+    q: &G2Projective,
+) -> (Vec<Fq6>, WireId) {
     let neg_q = g2_affine_neg_evaluate(circuit, q);
 
     let mut ellc: Vec<Fq6> = vec![];
@@ -531,6 +539,8 @@ pub fn ell_coeffs_montgomery<C: CircuitContext>(circuit: &mut C, q: &G2Projectiv
 
     let q1 = mul_by_char_montgomery(circuit, q);
     let mut q2 = mul_by_char_montgomery(circuit, &q1);
+    let q3 = mul_by_char_montgomery(circuit, &q2);
+
     let new_q2 = g2_affine_neg_evaluate(circuit, &q2);
     q2 = new_q2;
 
@@ -538,10 +548,30 @@ pub fn ell_coeffs_montgomery<C: CircuitContext>(circuit: &mut C, q: &G2Projectiv
     ellc.push(coeffs);
     r = new_r;
 
-    let (_new_r, coeffs) = add_in_place_montgomery(circuit, &r, &q2);
+    let (new_r, coeffs) = add_in_place_montgomery(circuit, &r, &q2);
     ellc.push(coeffs);
+    r = new_r;
 
-    ellc
+    let (new_r, _) = add_in_place_montgomery(circuit, &r, &q3);
+
+    // https://github.com/BitVM/BitVM/issues/191#issuecomment-2596825624
+    let is_in_sg = {
+        let z0 = new_r.z.c0();
+
+        let z1 = new_r.z.c1();
+        let z0_is_zero = bigint::equal_zero(circuit, z0);
+        let z1_is_zero = bigint::equal_zero(circuit, z1);
+        let z_is_zero = circuit.issue_wire();
+        circuit.add_gate(crate::Gate {
+            wire_a: z0_is_zero,
+            wire_b: z1_is_zero,
+            wire_c: z_is_zero,
+            gate_type: crate::GateType::And,
+        });
+        z0_is_zero
+    };
+
+    (ellc, is_in_sg)
 }
 
 /// Miller loop where P is already affine (z = 1), so no normalization needed.
@@ -641,7 +671,7 @@ pub fn multi_miller_loop_montgomery_fast<C: CircuitContext>(
     circuit: &mut C,
     ps: &[G1Projective],
     qs: &[G2Projective],
-) -> Fq12 {
+) -> ValidFq12 {
     // Skip normalization - assume inputs are already affine (z = 1)
     // - ell_coeffs_montgomery assumes mixed-add with affine Q (z = 1)
     // - ell_montgomery evaluates at affine P (z = 1)
@@ -649,9 +679,20 @@ pub fn multi_miller_loop_montgomery_fast<C: CircuitContext>(
     let qs_aff = qs.to_vec();
 
     let mut qells = Vec::new();
+    let mut valid_sg = TRUE_WIRE;
+
     for q in &qs_aff {
         let qell = ell_coeffs_montgomery(circuit, q);
-        qells.push(qell);
+        qells.push(qell.0);
+
+        let tmp0 = circuit.issue_wire();
+        circuit.add_gate(crate::Gate {
+            wire_a: valid_sg,
+            wire_b: qell.1,
+            wire_c: tmp0,
+            gate_type: crate::GateType::And,
+        });
+        valid_sg = tmp0;
     }
     let mut u = Vec::new();
     for i in 0..qells[0].len() {
@@ -694,7 +735,62 @@ pub fn multi_miller_loop_montgomery_fast<C: CircuitContext>(
         f = ell_montgomery(circuit, &f, &qell_next, p);
     }
 
-    f
+    ValidFq12 {
+        f,
+        is_valid: valid_sg,
+    }
+}
+
+/// Analogous to Option<Fq12> where `is_valid` carries `false` if variable is None
+#[derive(Clone, Debug)]
+pub struct ValidFq12 {
+    pub f: Fq12,
+    pub is_valid: WireId,
+}
+
+impl WiresObject for ValidFq12 {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut wires: Vec<WireId> = self.f.0[0]
+            .to_wires_vec()
+            .into_iter()
+            .chain(self.f.0[1].to_wires_vec())
+            .collect();
+        wires.push(self.is_valid);
+        wires
+    }
+
+    fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        ValidFq12 {
+            f: Fq12([
+                self.f.0[0].clone_from(&mut wire_gen),
+                self.f.0[1].clone_from(&mut wire_gen),
+            ]),
+            is_valid: wire_gen(),
+        }
+    }
+}
+
+impl FromWires for ValidFq12 {
+    fn from_wires(wires: &[WireId]) -> Option<Self> {
+        if wires.len() == ValidFq12::ARITY {
+            let mid = Fq6::N_BITS;
+            let fq6_1 = Fq6::from_wires(&wires[..mid])?;
+            let fq6_2 = Fq6::from_wires(&wires[mid..2 * mid])?;
+            let is_valid_wires = &wires[2 * mid..];
+            assert_eq!(is_valid_wires.len(), 1); // single is valid wire
+            let res = ValidFq12 {
+                f: Fq12([fq6_1, fq6_2]),
+                is_valid: is_valid_wires[0],
+            };
+            Some(res)
+        } else {
+            None
+        }
+    }
+}
+
+impl WiresArity for ValidFq12 {
+    const ARITY: usize = Fq12::N_BITS + 1;
 }
 
 fn new_fq12_constant_montgomery(v: ark_bn254::Fq12) -> Fq12 {
@@ -846,8 +942,8 @@ pub fn miller_loop_montgomery_fast<C: CircuitContext>(
     circuit: &mut C,
     p: &G1Projective,
     q: &G2Projective,
-) -> Fq12 {
-    let qell = ell_coeffs_montgomery(circuit, q);
+) -> ValidFq12 {
+    let (qell, is_valid_sg) = ell_coeffs_montgomery(circuit, q);
     let mut q_ell = qell.iter();
 
     let mut f = new_fq12_constant_montgomery(ark_bn254::Fq12::ONE);
@@ -872,7 +968,11 @@ pub fn miller_loop_montgomery_fast<C: CircuitContext>(
     f = ell_montgomery(circuit, &f, &qell_next, p);
     let qell_next = q_ell.next().unwrap().clone();
 
-    ell_montgomery(circuit, &f, &qell_next, p)
+    let res = ell_montgomery(circuit, &f, &qell_next, p);
+    ValidFq12 {
+        f: res,
+        is_valid: is_valid_sg,
+    }
 }
 
 // Final exponentiation logic has moved to gadgets::bn254::final_exponentiation
@@ -950,10 +1050,10 @@ pub fn multi_miller_loop_groth16_evaluate_montgomery_fast<C: CircuitContext>(
     q1: ark_bn254::G2Affine,
     q2: ark_bn254::G2Affine,
     q3: &G2Projective,
-) -> Fq12 {
+) -> ValidFq12 {
     let q1ell = ell_coeffs(q1);
     let q2ell = ell_coeffs(q2);
-    let q3ell = ell_coeffs_montgomery(circuit, q3);
+    let (q3ell, is_in_valid_sg) = ell_coeffs_montgomery(circuit, q3);
     let mut q1_ell = q1ell.iter();
     let mut q2_ell = q2ell.iter();
     let mut q3_ell = q3ell.iter();
@@ -1005,7 +1105,10 @@ pub fn multi_miller_loop_groth16_evaluate_montgomery_fast<C: CircuitContext>(
     let q3ell_next = q3_ell.next().unwrap().clone();
     f = ell_montgomery(circuit, &f, &q3ell_next, p3);
 
-    f
+    ValidFq12 {
+        f,
+        is_valid: is_in_valid_sg,
+    }
 }
 
 #[cfg(test)]
@@ -1035,6 +1138,28 @@ mod tests {
 
     fn random_g2_affine(rng: &mut impl Rng) -> ark_bn254::G2Affine {
         (ark_bn254::G2Projective::generator() * rnd_fr(rng)).into_affine()
+    }
+
+    // get valid point in curve that is not in subgroup
+    fn random_g2_affine_sg(rng: &mut impl Rng) -> ark_bn254::G2Affine {
+        let mut pt = ark_bn254::G2Affine::identity();
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq2::rand(rng);
+            let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq2::rand(rng), false)
+            };
+            if ref_is_valid {
+                pt = ark_bn254::G2Affine::new_unchecked(x, y);
+                break;
+            }
+        }
+        pt
     }
 
     #[test]
@@ -1146,9 +1271,14 @@ mod tests {
         };
         let result =
             CircuitBuilder::streaming_execute::<_, _, Fq12Output>(input, 10_000, |ctx, w| {
-                ell_montgomery(ctx, &w.f, &w.c, &w.p)
+                let res = ell_montgomery(ctx, &w.f, &w.c, &w.p);
+                ValidFq12 {
+                    f: res,
+                    is_valid: TRUE_WIRE,
+                }
             });
 
+        assert!(result.output_value.is_valid, "should be valid subgroup");
         assert_eq!(result.output_value.value, expected_m);
     }
 
@@ -1577,7 +1707,7 @@ mod tests {
                 let got = ell_coeffs_montgomery(ctx, &wires.q);
                 // Combine all equality checks into one flag
                 let mut ok = TRUE_WIRE;
-                for (i, coeff) in got.into_iter().enumerate() {
+                for (i, coeff) in got.0.into_iter().enumerate() {
                     let c0 = coeff.0[0].clone();
                     let c1 = coeff.0[1].clone();
                     let c2 = coeff.0[2].clone();
@@ -1598,11 +1728,42 @@ mod tests {
                     ctx.add_gate(Gate::and(ok, t, new_ok));
                     ok = new_ok;
                 }
-                vec![ok]
+                let valid = ctx.issue_wire();
+                ctx.add_gate(Gate {
+                    wire_a: ok,
+                    wire_b: got.1,
+                    wire_c: valid,
+                    gate_type: crate::GateType::And,
+                });
+                vec![valid]
             },
         );
 
         assert!(out.output_value[0]);
+
+        for _ in 0..3 {
+            // iterating in case we sample a point that exactly lies on a subgroup on some try
+            let r = random_g2_affine_sg(&mut rng);
+            assert!(
+                r.is_on_curve(),
+                "random_g2_affine_sg should give a point on curve"
+            );
+            let out = CircuitBuilder::streaming_execute::<_, _, Vec<bool>>(
+                In {
+                    q: ark_bn254::G2Projective::new_unchecked(r.x, r.y, ark_bn254::Fq2::ONE),
+                },
+                50_000,
+                |ctx, wires| {
+                    let got = ell_coeffs_montgomery(ctx, &wires.q);
+                    vec![got.1]
+                },
+            );
+            // match validity of subgroup returned by circuit with that from input reference point
+            assert_eq!(
+                out.output_value[0],
+                r.is_in_correct_subgroup_assuming_on_curve()
+            );
+        }
     }
 
     #[test]
@@ -1882,11 +2043,16 @@ mod tests {
             10_000,
             |ctx, input| {
                 let f_ml = miller_loop_montgomery_fast(ctx, &input.p, &input.q);
-                final_exponentiation_montgomery(ctx, &f_ml)
+                let fexp = final_exponentiation_montgomery(ctx, &f_ml.f);
+                ValidFq12 {
+                    f: fexp,
+                    is_valid: f_ml.is_valid,
+                }
             },
         );
 
         assert_eq!(result.output_value.value, expected_m);
+        assert!(result.output_value.is_valid, "G2 point must be in subgroup");
     }
     // Local decoder helpers for Fq12 output
     fn decode_fq6_from_wires(
@@ -1914,14 +2080,19 @@ mod tests {
 
     struct Fq12Output {
         value: ark_bn254::Fq12,
+        is_valid: bool,
     }
     impl CircuitOutput<ExecuteMode> for Fq12Output {
-        type WireRepr = Fq12;
+        type WireRepr = ValidFq12;
         fn decode(wires: Self::WireRepr, cache: &mut ExecuteMode) -> Self {
-            let c0 = decode_fq6_from_wires(&wires.0[0], cache);
-            let c1 = decode_fq6_from_wires(&wires.0[1], cache);
+            let c0 = decode_fq6_from_wires(&wires.f.0[0], cache);
+            let c1 = decode_fq6_from_wires(&wires.f.0[1], cache);
+            let is_valid = cache
+                .lookup_wire(wires.is_valid)
+                .expect("missing wire value");
             Self {
                 value: ark_bn254::Fq12::new(c0, c1),
+                is_valid,
             }
         }
     }
@@ -2018,7 +2189,11 @@ mod tests {
         };
         let result =
             CircuitBuilder::streaming_execute::<_, _, Fq12Output>(input, 10_000, |ctx, input| {
-                ell_eval_const(ctx, &input.f, &coeff, &input.p)
+                let f = ell_eval_const(ctx, &input.f, &coeff, &input.p);
+                ValidFq12 {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
             });
 
         assert_eq!(result.output_value.value, expected_m);
@@ -2095,7 +2270,13 @@ mod tests {
         let result = CircuitBuilder::streaming_execute::<_, _, Fq12Output>(
             In { p },
             10_000,
-            |ctx, input| miller_loop_const_q(ctx, &input.p, &q),
+            |ctx, input| {
+                let f = miller_loop_const_q(ctx, &input.p, &q);
+                ValidFq12 {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
+            },
         );
 
         assert_eq!(result.output_value.value, expected_m);
@@ -2172,7 +2353,13 @@ mod tests {
         let result = CircuitBuilder::streaming_execute::<_, _, Fq12Output>(
             In { p },
             10_000,
-            |ctx, input| pairing_const_q(ctx, &input.p, &q),
+            |ctx, input| {
+                let f = pairing_const_q(ctx, &input.p, &q);
+                ValidFq12 {
+                    f,
+                    is_valid: TRUE_WIRE,
+                }
+            },
         );
 
         assert_eq!(result.output_value.value, expected_m);
@@ -2263,7 +2450,11 @@ mod tests {
             10_000,
             |ctx, input| {
                 let ps = [input.p0.clone(), input.p1.clone(), input.p2.clone()];
-                multi_pairing_const_q(ctx, &ps, &[q0, q1, q2])
+                let res = multi_pairing_const_q(ctx, &ps, &[q0, q1, q2]);
+                ValidFq12 {
+                    f: res,
+                    is_valid: TRUE_WIRE,
+                }
             },
         );
 
@@ -2682,11 +2873,9 @@ mod tests {
         // Exercise several randomized and edge cases
         let mut rng = ChaCha20Rng::seed_from_u64(0xC011EC7);
         for case in 0..4u32 {
-            // Select points per case
             let (p1, p2, p3, q1, q2, q3) = match case {
-                // Fully random points
-                0..=3 => {
-                    // Normalize Ps to affine (z=1) before encoding, matching gadget expectations
+                // q3 may be in subgroup G2
+                0..=2 => {
                     let p1 = (ark_bn254::G1Projective::generator() * rnd_fr(&mut rng))
                         .into_affine()
                         .into_group();
@@ -2698,12 +2887,15 @@ mod tests {
                         .into_group();
                     let q1 = random_g2_affine(&mut rng);
                     let q2 = random_g2_affine(&mut rng);
-                    // Ensure q3 is affine (z = 1) for mixed-add formulas
-                    let q3_aff = random_g2_affine(&mut rng);
-                    let q3 = ark_bn254::G2Projective::new(q3_aff.x, q3_aff.y, ark_bn254::Fq2::ONE);
+                    let q3_aff = random_g2_affine_sg(&mut rng);
+                    let q3 = ark_bn254::G2Projective::new_unchecked(
+                        q3_aff.x,
+                        q3_aff.y,
+                        ark_bn254::Fq2::ONE,
+                    );
                     (p1, p2, p3, q1, q2, q3)
                 }
-                // q3 with z = 1 (affine form encoded as projective) to exercise mixed-add friendly path
+                // q3 is chosen to be from subgroup G2
                 _ => {
                     let p1 = (ark_bn254::G1Projective::generator() * rnd_fr(&mut rng))
                         .into_affine()
@@ -2735,6 +2927,10 @@ mod tests {
                     )
                 });
 
+            assert_eq!(
+                q3.into_affine().is_in_correct_subgroup_assuming_on_curve(),
+                result.output_value.is_valid
+            );
             assert_eq!(
                 result.output_value.value, expected_m,
                 "case {case} mismatch"
