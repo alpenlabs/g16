@@ -5,10 +5,14 @@
 //! the structure used in the main branch.
 
 use ark_ec::bn::BnConfig;
-use ark_ff::{BitIteratorBE, Field};
+use ark_ff::{AdditiveGroup, BitIteratorBE, Field};
 use circuit_component_macro::component;
 
-use crate::{CircuitContext, gadgets::bn254::fq12::Fq12};
+use crate::{
+    CircuitContext,
+    circuit::TRUE_WIRE,
+    gadgets::bn254::fq12::{Fq12, ValidFq12},
+};
 
 pub fn conjugate_native(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
     ark_bn254::Fq12::new(f.c0, -f.c1)
@@ -98,7 +102,16 @@ pub fn exp_by_neg_x_montgomery<C: CircuitContext>(circuit: &mut C, f: &Fq12) -> 
 }
 
 #[component]
-pub fn final_exponentiation_montgomery<C: CircuitContext>(circuit: &mut C, f: &Fq12) -> Fq12 {
+pub fn final_exponentiation_montgomery<C: CircuitContext>(circuit: &mut C, f: &Fq12) -> ValidFq12 {
+    let is_zero = Fq12::equal_constant(circuit, f, &ark_bn254::Fq12::ZERO);
+    let is_valid = circuit.issue_wire();
+    circuit.add_gate(crate::Gate {
+        wire_a: is_zero,
+        wire_b: TRUE_WIRE,
+        wire_c: is_valid,
+        gate_type: crate::GateType::Xor,
+    });
+
     let f_inv = Fq12::inverse_montgomery(circuit, f);
     let f_conjugate = Fq12::conjugate(circuit, f);
     let u = Fq12::mul_montgomery(circuit, &f_inv, &f_conjugate);
@@ -127,7 +140,9 @@ pub fn final_exponentiation_montgomery<C: CircuitContext>(circuit: &mut C, f: &F
     let y18 = Fq12::mul_montgomery(circuit, &r2, &y11);
     let y19 = Fq12::frobenius_montgomery(circuit, &y18, 3);
 
-    Fq12::mul_montgomery(circuit, &y19, &y17)
+    let f = Fq12::mul_montgomery(circuit, &y19, &y17);
+
+    ValidFq12 { f, is_valid }
 }
 
 #[cfg(test)]
@@ -171,6 +186,7 @@ mod tests {
         }
         struct Out {
             value: ark_bn254::Fq12,
+            valid: bool,
         }
         fn encode_fq6_to_wires<M: CircuitMode<WireValue = bool>>(
             val: &ark_bn254::Fq6,
@@ -260,7 +276,7 @@ mod tests {
             }
         }
         impl CircuitOutput<ExecuteMode> for Out {
-            type WireRepr = Fq12Wires;
+            type WireRepr = ValidFq12;
             fn decode(wires: Self::WireRepr, cache: &mut ExecuteMode) -> Self {
                 fn decode_fq6_from_wires(
                     wires: &Fq6Wires,
@@ -298,10 +314,12 @@ mod tests {
                         ark_bn254::Fq2::new(ark_bn254::Fq::from(c2_c0), ark_bn254::Fq::from(c2_c1));
                     ark_bn254::Fq6::new(c0, c1, c2)
                 }
-                let c0 = decode_fq6_from_wires(&wires.0[0], cache);
-                let c1 = decode_fq6_from_wires(&wires.0[1], cache);
+                let c0 = decode_fq6_from_wires(&wires.f.0[0], cache);
+                let c1 = decode_fq6_from_wires(&wires.f.0[1], cache);
+                let valid = cache.lookup_wire(wires.is_valid).expect("missing wire");
                 Self {
                     value: ark_bn254::Fq12::new(c0, c1),
+                    valid,
                 }
             }
         }
@@ -312,6 +330,27 @@ mod tests {
                 final_exponentiation_montgomery(ctx, &input.f)
             });
 
-        assert_eq!(result.output_value.value, expected_m);
+        assert!(
+            result.output_value.valid,
+            "final_exponentiation_montgomery input should be valid"
+        );
+        assert_eq!(
+            result.output_value.value, expected_m,
+            "final_exponentiation_montgomery output should be valid"
+        );
+
+        // Test for non-invertible element
+        let input = In {
+            f: ark_bn254::Fq12::ZERO,
+        };
+        let result: StreamingResult<_, _, Out> =
+            CircuitBuilder::streaming_execute(input, 10_000, |ctx, input| {
+                final_exponentiation_montgomery(ctx, &input.f)
+            });
+
+        assert!(
+            !result.output_value.valid,
+            "final_exponentiation_montgomery input should be invalid"
+        );
     }
 }

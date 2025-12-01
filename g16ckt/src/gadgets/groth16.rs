@@ -12,7 +12,7 @@ use circuit_component_macro::component;
 
 use crate::{
     CircuitContext, Fq2Wire, WireId,
-    circuit::{CircuitInput, CircuitMode, EncodeInput, WiresObject},
+    circuit::{CircuitInput, CircuitMode, EncodeInput, TRUE_WIRE, WiresObject},
     gadgets::{
         bigint,
         bn254::{
@@ -83,6 +83,15 @@ pub fn groth16_verify<C: CircuitContext>(
     let msm =
         G1Projective::add_montgomery(circuit, &msm_temp, &G1Projective::new_constant(&gamma0_m));
 
+    let non_invertible = bigint::equal_zero(circuit, &msm.z);
+    let is_valid_msm = circuit.issue_wire(); // invertible
+    circuit.add_gate(crate::Gate {
+        wire_a: non_invertible,
+        wire_b: TRUE_WIRE,
+        wire_c: is_valid_msm,
+        gate_type: crate::GateType::Xor,
+    });
+
     let msm_affine = projective_to_affine_montgomery(circuit, &msm);
 
     let f = multi_miller_loop_groth16_evaluate_montgomery_fast(
@@ -104,9 +113,26 @@ pub fn groth16_verify<C: CircuitContext>(
     .inverse()
     .unwrap();
 
-    let f = final_exponentiation_montgomery(circuit, &f);
+    let finexp = final_exponentiation_montgomery(circuit, &f);
 
-    Fq12::equal_constant(circuit, &f, &Fq12::as_montgomery(alpha_beta))
+    let is_valid_proof = Fq12::equal_constant(circuit, &finexp.f, &Fq12::as_montgomery(alpha_beta));
+
+    let tmp0 = circuit.issue_wire();
+    let is_valid_final = circuit.issue_wire();
+
+    circuit.add_gate(crate::Gate {
+        wire_a: is_valid_proof,  // final exp output should be correct
+        wire_b: finexp.is_valid, // input to final_exponentiation is valid
+        wire_c: tmp0,
+        gate_type: crate::GateType::And,
+    });
+    circuit.add_gate(crate::Gate {
+        wire_a: tmp0,
+        wire_b: is_valid_msm, // output of msm should be valid
+        wire_c: is_valid_final,
+        gate_type: crate::GateType::And,
+    });
+    is_valid_final
 }
 
 /// Decompress a compressed G1 point (x, sign bit) into projective wires with z = 1 (Montgomery domain).
