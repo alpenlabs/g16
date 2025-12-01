@@ -6,13 +6,14 @@
 
 use ark_bn254::Bn254;
 use ark_ec::{AffineRepr, CurveGroup, models::short_weierstrass::SWCurveConfig, pairing::Pairing};
-use ark_ff::{AdditiveGroup, Field};
+use ark_ff::{AdditiveGroup, Field, PrimeField};
 use ark_groth16::VerifyingKey;
 use circuit_component_macro::component;
+use num_bigint::BigUint;
 
 use crate::{
     CircuitContext, Fq2Wire, WireId,
-    circuit::{CircuitInput, CircuitMode, EncodeInput, WiresObject},
+    circuit::{CircuitInput, CircuitMode, EncodeInput, TRUE_WIRE, WiresObject},
     gadgets::{
         bigint,
         bn254::{
@@ -78,6 +79,46 @@ pub fn groth16_verify<C: CircuitContext>(
     let msm_temp =
         G1Projective::msm_with_constant_bases_montgomery::<10, _>(circuit, public, &bases);
 
+    // Verify that all public inputs are valid scalar field elements
+    let is_valid_fr = {
+        let mut and_all_wires = TRUE_WIRE;
+        public.iter().for_each(|pubinp| {
+            let r: BigUint = ark_bn254::Fr::MODULUS.into();
+            let valid_pubinp = bigint::less_than_constant(circuit, pubinp, &r);
+            let new_wire = circuit.issue_wire();
+            circuit.add_gate(crate::Gate {
+                wire_a: and_all_wires,
+                wire_b: valid_pubinp,
+                wire_c: new_wire,
+                gate_type: crate::GateType::And,
+            });
+            and_all_wires = new_wire;
+        });
+        and_all_wires
+    };
+
+    // Verify that all group elements of input proof include valid base field elements
+    let is_valid_fq = {
+        let elems = [
+            &a.x, &a.y, &a.z, &b.x.0[0], &b.x.0[1], &b.y.0[0], &b.y.0[1], &b.z.0[0], &b.z.0[1],
+            &c.x, &c.y, &c.z,
+        ];
+        let mut and_all_wires = TRUE_WIRE;
+        elems.iter().for_each(|pubinp| {
+            let r: BigUint = ark_bn254::Fq::MODULUS.into();
+            let valid_fq = bigint::less_than_constant(circuit, pubinp, &r);
+            let new_wire = circuit.issue_wire();
+            circuit.add_gate(crate::Gate {
+                wire_a: and_all_wires,
+                wire_b: valid_fq,
+                wire_c: new_wire,
+                gate_type: crate::GateType::And,
+            });
+            and_all_wires = new_wire;
+        });
+        and_all_wires
+    };
+
     // Add the constant term gamma_abc_g1[0] in Montgomery form
     let gamma0_m = G1Projective::as_montgomery(vk.gamma_abc_g1[0].into_group());
     let msm =
@@ -106,7 +147,24 @@ pub fn groth16_verify<C: CircuitContext>(
 
     let f = final_exponentiation_montgomery(circuit, &f);
 
-    Fq12::equal_constant(circuit, &f, &Fq12::as_montgomery(alpha_beta))
+    let is_valid_proof = Fq12::equal_constant(circuit, &f, &Fq12::as_montgomery(alpha_beta));
+
+    let tmp0 = circuit.issue_wire();
+    let is_valid_final = circuit.issue_wire();
+    circuit.add_gate(crate::Gate {
+        wire_a: is_valid_fq,
+        wire_b: is_valid_fr,
+        wire_c: tmp0,
+        gate_type: crate::GateType::And,
+    });
+    circuit.add_gate(crate::Gate {
+        wire_a: tmp0,
+        wire_b: is_valid_proof,
+        wire_c: is_valid_final,
+        gate_type: crate::GateType::And,
+    });
+
+    is_valid_final
 }
 
 /// Decompress a compressed G1 point (x, sign bit) into projective wires with z = 1 (Montgomery domain).
