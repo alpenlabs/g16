@@ -24,7 +24,6 @@ g16gen/
 │   ├── cache.rs             # Credits and output wires caching
 │   ├── dummy_circuit.rs     # Test circuit for proof generation
 │   ├── proof_setup.rs       # Test proof generation utilities
-│   ├── u24.rs               # 24-bit unsigned integer type
 │   ├── modes/               # Circuit evaluation modes
 │   │   ├── credit.rs        # Credit collection mode
 │   │   └── translate.rs     # Circuit translation mode

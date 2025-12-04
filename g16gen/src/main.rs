@@ -6,7 +6,6 @@ mod dummy_circuit;
 mod modes;
 mod passes;
 mod proof_setup;
-pub mod u24;
 
 use cache::{save_cache, try_load_cache};
 use passes::{
