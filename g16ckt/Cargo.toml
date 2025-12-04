@@ -56,12 +56,6 @@ ark-relations = "0.5.0"
 serde_json = "1.0"
 test-log = { version = "0.2.8", default-features = false, features = ["trace"] }
 
-# Install Git hooks via cargo-husky
-[dev-dependencies.cargo-husky]
-version = "1"
-default-features = false
-features = ["user-hooks"]
-
 [profile.flamegraph]
 inherits = "release"
 debug = true           # Essential for symbol resolution
@@ -70,6 +64,4 @@ lto = "fat"           # Cross-crate optimization
 panic = "abort"       # Faster execution, smaller binary
 
 [package.metadata.cargo-udeps.ignore]
-# `cargo-husky` is intentionally present for git hooks and should be ignored by udeps
-development = ["cargo-husky"]
 normal = ["aes"]
