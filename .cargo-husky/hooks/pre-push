@@ -1,6 +1,0 @@
-#!/bin/sh
-set -e
-
-echo "+ cargo test --release"
-cargo test --release
-
