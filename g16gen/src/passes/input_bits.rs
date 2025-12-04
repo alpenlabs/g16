@@ -1,3 +1,8 @@
+use std::{
+    fs::OpenOptions,
+    io::{BufWriter, Write},
+};
+
 use g16ckt::{
     Fq2Wire, WireId,
     ark::{CurveGroup, Field},
@@ -7,8 +12,6 @@ use g16ckt::{
         groth16::Groth16VerifyCompressedInput,
     },
 };
-use std::fs::OpenOptions;
-use std::io::{BufWriter, Write};
 
 const INPUT_BITS_FILE: &str = "inputs.txt";
 

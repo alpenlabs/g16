@@ -1,6 +1,8 @@
-use std::cmp::Ordering;
-use std::fmt;
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::{
+    cmp::Ordering,
+    fmt,
+    ops::{Add, Div, Mul, Rem, Sub},
+};
 
 /// A 24-bit unsigned integer stored in little-endian byte order.
 /// Bytes are ordered as [LSB, middle, MSB] for optimal performance on LE systems.
@@ -166,7 +168,7 @@ impl Sub<U24> for U24 {
 
     #[inline]
     fn sub(self, rhs: U24) -> Self::Output {
-        Self::from_u32(self.to_u32().wrapping_sub(rhs.to_u32()) & 0xFFFFFF)
+        Self::from_u32(self.to_u32().wrapping_sub(rhs.to_u32()))
     }
 }
 

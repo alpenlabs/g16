@@ -1,3 +1,3 @@
 [workspace]
-members = ["g16ckt", "circuit_component_macro", "g16gen", "verify", "g16check"]
+members = ["g16ckt", "g16gen", "verify", "g16check"]
 resolver = "3"
