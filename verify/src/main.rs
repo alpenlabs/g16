@@ -1,4 +1,4 @@
-use ckt::v5::a::reader::verify_v5a_checksum;
+use ckt_fmtv5_types::v5::a::reader::verify_v5a_checksum;
 
 #[monoio::main]
 async fn main() {
