@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 ahash = "0.8.12"
-ckt = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
+ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
 indicatif = "0.18.0"
-lvl = { git = "https://github.com/alpenlabs/ckt"}
+ckt-lvl = { git = "https://github.com/alpenlabs/ckt"}
 g16ckt = { path = "../g16ckt" }
 tracing = "0.1.41"
 rand = "0.8" # using old version for consistency with ark

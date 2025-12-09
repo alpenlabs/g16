@@ -1,12 +1,13 @@
 use std::{num::NonZero, path::PathBuf, str::FromStr};
 
-use ckt::{
+use ckt_fmtv5_types::{
     GateType,
     v5::{
         self,
         a::{GateV5a, writer::CircuitWriterV5a},
     },
 };
+use ckt_lvl::types::CompactWireId;
 use cynosure::site_d::ringbuf::{Producer, RingBuf};
 use g16ckt::{
     Gate as SourceGate, GateType as SourceGateType, WireId, circuit::CircuitMode,
@@ -14,7 +15,6 @@ use g16ckt::{
 };
 use indicatif::ProgressBar;
 use kanal::{Sender, bounded_async};
-use lvl::types::CompactWireId;
 use monoio::{FusionDriver, RuntimeBuilder, select};
 
 pub struct TranslationMode {

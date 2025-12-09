@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ckt = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
+ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
 monoio = { version = "0.2.4", features = ["sync"] }
