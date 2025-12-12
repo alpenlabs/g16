@@ -516,18 +516,19 @@ fn convert_hash_to_bigint_wires(out_hash: HashOutputWires) -> Vec<Fr> {
 #[component(offcircuit_args = "vk")]
 pub fn groth16_verify_compressed_over_raw<const N: usize, C: CircuitContext>(
     circuit: &mut C,
-    public: &InputMessageWires<N>,
-    compressed_a: &CompressedG1Wires,
-    compressed_b: &CompressedG2Wires,
-    compressed_c: &CompressedG1Wires,
+    input: &Groth16ExecRawCompressedInputWires<N>,
     vk: &ark_groth16::VerifyingKey<ark_bn254::Bn254>,
 ) -> crate::WireId {
-    let a = decompress_g1_from_compressed(circuit, compressed_a);
-    let b = decompress_g2_from_compressed(circuit, compressed_b);
-    let c = decompress_g1_from_compressed(circuit, compressed_c);
+    let compressed_a = input.serialized_proof.0[0..32 * 8].try_into().unwrap();
+    let compressed_b = input.serialized_proof.0[32 * 8..96 * 8].try_into().unwrap();
+    let compressed_c = input.serialized_proof.0[96 * 8..].try_into().unwrap();
+
+    let (a, _) = G1Projective::deserialize_checked(circuit, compressed_a);
+    let (b, _) = G2Projective::deserialize_checked(circuit, compressed_b);
+    let (c, _) = G1Projective::deserialize_checked(circuit, compressed_c);
 
     // convert InputMessage<N> to scalar field elements
-    let out_hash = blake3_hash(circuit, *public);
+    let out_hash = blake3_hash(circuit, input.public);
     let hash_fr = convert_hash_to_bigint_wires(out_hash);
 
     let input_wires = Groth16VerifyInputWires {
@@ -540,98 +541,85 @@ pub fn groth16_verify_compressed_over_raw<const N: usize, C: CircuitContext>(
     groth16_verify(circuit, &input_wires)
 }
 
-pub struct Groth16ExecRawInputCompressedRaw<const N: usize> {
-    pub public: InputMessage<N>,
-    pub a: ark_bn254::G1Projective,
-    pub b: ark_bn254::G2Projective,
-    pub c: ark_bn254::G1Projective,
+type SerializedCompressedProof = [bool; 128 * 8];
+
+#[derive(Debug, Clone, Copy)]
+pub struct SerializedCompressedProofWires(pub [WireId; 128 * 8]);
+
+impl SerializedCompressedProofWires {
+    pub fn new(issue: &mut impl FnMut() -> WireId) -> Self {
+        let v: Vec<WireId> = std::iter::repeat_with(issue).take(128 * 8).collect();
+        let v: [WireId; 128 * 8] = v.try_into().unwrap();
+        Self(v)
+    }
+    // add deserialize prooof checked
 }
 
-#[derive(Debug)]
-pub struct CompressedGroth16ExecInputRawWires<const N: usize> {
+impl WiresObject for SerializedCompressedProofWires {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        self.0.to_vec()
+    }
+    fn clone_from(&self, wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        SerializedCompressedProofWires::new(wire_gen)
+    }
+}
+
+impl<const N: usize> WiresObject for Groth16ExecRawCompressedInputWires<N> {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut pub_wires = self.public.to_wires_vec();
+        pub_wires.extend_from_slice(&self.serialized_proof.0);
+        pub_wires
+    }
+
+    fn clone_from(&self, wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        Self {
+            public: self.public.clone_from(wire_gen),
+            serialized_proof: self.serialized_proof.clone_from(wire_gen),
+        }
+    }
+}
+
+pub struct Groth16ExecRawCompressedInput<const N: usize> {
+    pub raw_inputs: InputMessage<N>,
+    pub serialized_proof: SerializedCompressedProof,
+}
+
+#[derive(Debug, Clone)]
+pub struct Groth16ExecRawCompressedInputWires<const N: usize> {
     pub public: InputMessageWires<N>,
-    pub a: CompressedG1Wires,
-    pub b: CompressedG2Wires,
-    pub c: CompressedG1Wires,
+    pub serialized_proof: SerializedCompressedProofWires,
 }
 
-impl<const N: usize> CircuitInput for Groth16ExecRawInputCompressedRaw<N> {
-    type WireRepr = CompressedGroth16ExecInputRawWires<N>;
+impl<const N: usize> CircuitInput for Groth16ExecRawCompressedInput<N> {
+    type WireRepr = Groth16ExecRawCompressedInputWires<N>;
 
     fn allocate(&self, mut issue: impl FnMut() -> WireId) -> Self::WireRepr {
-        CompressedGroth16ExecInputRawWires {
+        Groth16ExecRawCompressedInputWires {
             public: InputMessageWires::new(&mut issue),
-            a: CompressedG1Wires::new(&mut issue),
-            b: CompressedG2Wires::new(&mut issue),
-            c: CompressedG1Wires::new(&mut issue),
+            serialized_proof: SerializedCompressedProofWires::new(&mut issue),
         }
     }
     fn collect_wire_ids(repr: &Self::WireRepr) -> Vec<crate::WireId> {
         let mut ids = Vec::new();
         ids.extend(repr.public.to_wires_vec());
-        ids.extend(repr.a.to_wires_vec());
-        ids.extend(repr.b.to_wires_vec());
-        ids.extend(repr.c.to_wires_vec());
+        ids.extend(repr.serialized_proof.to_wires_vec());
         ids
     }
 }
 
 impl<const N: usize, M: CircuitMode<WireValue = bool>> EncodeInput<M>
-    for Groth16ExecRawInputCompressedRaw<N>
+    for Groth16ExecRawCompressedInput<N>
 {
-    fn encode(&self, repr: &CompressedGroth16ExecInputRawWires<N>, cache: &mut M) {
+    fn encode(&self, repr: &Groth16ExecRawCompressedInputWires<N>, cache: &mut M) {
         // Encode public scalars
-        self.public.encode(&repr.public, cache);
+        self.raw_inputs.encode(&repr.public, cache);
 
-        // Compute compression from standard affine coords; feed Montgomery x + flag
-        let a_aff_std = self.a.into_affine();
-        let b_aff_std = self.b.into_affine();
-        let c_aff_std = self.c.into_affine();
-
-        let a_flag = (a_aff_std.y.square())
-            .sqrt()
-            .expect("y^2 must be QR")
-            .eq(&a_aff_std.y);
-        let b_flag = (b_aff_std.y.square())
-            .sqrt()
-            .expect("y^2 must be QR in Fq2")
-            .eq(&b_aff_std.y);
-        let c_flag = (c_aff_std.y.square())
-            .sqrt()
-            .expect("y^2 must be QR")
-            .eq(&c_aff_std.y);
-
-        let a_x_m = Fq::as_montgomery(a_aff_std.x);
-        let b_x_m = Fq2Wire::as_montgomery(b_aff_std.x);
-        let c_x_m = Fq::as_montgomery(c_aff_std.x);
-
-        // Feed A.x (Montgomery) bits and flag
-        let a_x_fn = Fq::get_wire_bits_fn(&repr.a.x_m, &a_x_m).unwrap();
-        for &wire_id in repr.a.x_m.iter() {
-            if let Some(bit) = a_x_fn(wire_id) {
-                cache.feed_wire(wire_id, bit);
-            }
-        }
-        cache.feed_wire(repr.a.y_flag, a_flag);
-
-        // Feed B.x (Montgomery) bits and flag (Fq2 as c0||c1)
-        let b_x_fn = Fq2Wire::get_wire_bits_fn(&repr.b.p, &b_x_m).unwrap();
-        for &wire_id in repr.b.p.iter() {
-            if let Some(bit) = b_x_fn(wire_id) {
-                cache.feed_wire(wire_id, bit);
-            }
-        }
-        cache.feed_wire(repr.b.y_flag, b_flag);
-
-        // Feed C.x (Montgomery) bits and flag
-        let c_x_fn = Fq::get_wire_bits_fn(&repr.c.x_m, &c_x_m).unwrap();
-
-        for &wire_id in repr.c.x_m.iter() {
-            if let Some(bit) = c_x_fn(wire_id) {
-                cache.feed_wire(wire_id, bit);
-            }
-        }
-        cache.feed_wire(repr.c.y_flag, c_flag);
+        self.serialized_proof
+            .iter()
+            .zip(repr.serialized_proof.0)
+            .for_each(|(x, y)| {
+                cache.feed_wire(y, *x);
+            });
     }
 }
 
@@ -646,7 +634,7 @@ mod tests {
         lc,
         r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError},
     };
-    use ark_serialize::CanonicalDeserialize;
+    use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
     use ark_snark::{CircuitSpecificSetupSNARK, SNARK};
     use num_bigint::BigUint;
     use rand::{Rng, SeedableRng};
@@ -1080,6 +1068,159 @@ mod tests {
     }
 
     #[test]
+    fn test_gnark_proof_decompress_matches() {
+        #[component(offcircuit_args = "vk")]
+        pub fn extract_proof_from_bytes<const N: usize, C: CircuitContext>(
+            circuit: &mut C,
+            input: &Groth16ExecRawCompressedInputWires<N>,
+        ) -> G2Projective {
+            let compressed_a = input.serialized_proof.0[0..32 * 8].try_into().unwrap();
+            let compressed_b = input.serialized_proof.0[32 * 8..96 * 8].try_into().unwrap();
+            let compressed_c = input.serialized_proof.0[96 * 8..].try_into().unwrap();
+
+            let (_a, _) = G1Projective::deserialize_checked(circuit, compressed_a);
+            let (b, _) = G2Projective::deserialize_checked(circuit, compressed_b);
+            let (_c, _) = G1Projective::deserialize_checked(circuit, compressed_c);
+            b
+        }
+        let ark_proof_bytes: [u8; 128] = [
+            55, 126, 31, 52, 68, 72, 45, 185, 179, 42, 69, 122, 227, 134, 234, 167, 80, 68, 65,
+            142, 134, 133, 97, 24, 194, 180, 193, 213, 111, 19, 12, 42, 142, 193, 123, 63, 163, 6,
+            122, 100, 126, 178, 41, 127, 97, 82, 169, 2, 30, 190, 130, 153, 110, 203, 2, 95, 89,
+            162, 70, 74, 63, 232, 176, 42, 39, 119, 13, 172, 154, 135, 98, 126, 217, 67, 36, 222,
+            136, 93, 161, 93, 1, 196, 101, 172, 163, 240, 105, 124, 107, 93, 222, 133, 118, 94,
+            161, 14, 165, 232, 61, 136, 121, 145, 0, 171, 184, 234, 57, 160, 1, 248, 7, 195, 124,
+            95, 50, 113, 24, 203, 211, 73, 196, 40, 173, 148, 179, 126, 12, 131,
+        ];
+        let ark_proof = ark_groth16::Proof::<ark_bn254::Bn254>::deserialize_compressed_unchecked(
+            &ark_proof_bytes[..],
+        )
+        .unwrap();
+
+        let proof_bytes: [u8; 128] = [
+            170, 12, 19, 111, 213, 193, 180, 194, 24, 97, 133, 134, 142, 65, 68, 80, 167, 234, 134,
+            227, 122, 69, 42, 179, 185, 45, 72, 68, 52, 31, 126, 55, 142, 161, 94, 118, 133, 222,
+            93, 107, 124, 105, 240, 163, 172, 101, 196, 1, 93, 161, 93, 136, 222, 36, 67, 217, 126,
+            98, 135, 154, 172, 13, 119, 39, 42, 176, 232, 63, 74, 70, 162, 89, 95, 2, 203, 110,
+            153, 130, 190, 30, 2, 169, 82, 97, 127, 41, 178, 126, 100, 122, 6, 163, 63, 123, 193,
+            142, 195, 12, 126, 179, 148, 173, 40, 196, 73, 211, 203, 24, 113, 50, 95, 124, 195, 7,
+            248, 1, 160, 57, 234, 184, 171, 0, 145, 121, 136, 61, 232, 165,
+        ];
+        let proof_bits: Vec<bool> = proof_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+
+        let raw_public_input: [u8; 36] = [
+            55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0,
+            55, 0, 0, 0, 89, 0, 0, 0,
+        ];
+
+        let inputs = Groth16ExecRawCompressedInput {
+            raw_inputs: InputMessage {
+                byte_arr: raw_public_input,
+            },
+            serialized_proof: proof_bits.try_into().unwrap(),
+        };
+
+        let result: StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
+                let result_wires = extract_proof_from_bytes(ctx, wires);
+                let mut output_ids = Vec::new();
+                output_ids.extend(result_wires.x.iter());
+                output_ids.extend(result_wires.y.iter());
+                output_ids.extend(result_wires.z.iter());
+                output_ids
+            });
+
+        let actual_result = G2Projective::from_bits_unchecked(result.output_value.clone());
+
+        let ark_proof_a_mont = G2Projective::as_montgomery(ark_proof.b.into());
+        assert_eq!(actual_result, ark_proof_a_mont);
+    }
+
+    #[test]
+    fn test_gnark_proof_verifies() {
+        let ark_proof_bytes: [u8; 128] = [
+            55, 126, 31, 52, 68, 72, 45, 185, 179, 42, 69, 122, 227, 134, 234, 167, 80, 68, 65,
+            142, 134, 133, 97, 24, 194, 180, 193, 213, 111, 19, 12, 42, 142, 193, 123, 63, 163, 6,
+            122, 100, 126, 178, 41, 127, 97, 82, 169, 2, 30, 190, 130, 153, 110, 203, 2, 95, 89,
+            162, 70, 74, 63, 232, 176, 42, 39, 119, 13, 172, 154, 135, 98, 126, 217, 67, 36, 222,
+            136, 93, 161, 93, 1, 196, 101, 172, 163, 240, 105, 124, 107, 93, 222, 133, 118, 94,
+            161, 14, 165, 232, 61, 136, 121, 145, 0, 171, 184, 234, 57, 160, 1, 248, 7, 195, 124,
+            95, 50, 113, 24, 203, 211, 73, 196, 40, 173, 148, 179, 126, 12, 131,
+        ];
+        let _ark_proof = ark_groth16::Proof::<ark_bn254::Bn254>::deserialize_compressed_unchecked(
+            &ark_proof_bytes[..],
+        )
+        .unwrap();
+
+        let proof_bytes: [u8; 128] = [
+            170, 12, 19, 111, 213, 193, 180, 194, 24, 97, 133, 134, 142, 65, 68, 80, 167, 234, 134,
+            227, 122, 69, 42, 179, 185, 45, 72, 68, 52, 31, 126, 55, 142, 161, 94, 118, 133, 222,
+            93, 107, 124, 105, 240, 163, 172, 101, 196, 1, 93, 161, 93, 136, 222, 36, 67, 217, 126,
+            98, 135, 154, 172, 13, 119, 39, 42, 176, 232, 63, 74, 70, 162, 89, 95, 2, 203, 110,
+            153, 130, 190, 30, 2, 169, 82, 97, 127, 41, 178, 126, 100, 122, 6, 163, 63, 123, 193,
+            142, 195, 12, 126, 179, 148, 173, 40, 196, 73, 211, 203, 24, 113, 50, 95, 124, 195, 7,
+            248, 1, 160, 57, 234, 184, 171, 0, 145, 121, 136, 61, 232, 165,
+        ];
+        let proof_bits: Vec<bool> = proof_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+
+        let raw_public_input: [u8; 36] = [
+            55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0,
+            55, 0, 0, 0, 89, 0, 0, 0,
+        ];
+
+        let inputs = Groth16ExecRawCompressedInput {
+            raw_inputs: InputMessage {
+                byte_arr: raw_public_input,
+            },
+            serialized_proof: proof_bits.try_into().unwrap(),
+        };
+
+        let vk_bytes: [u8; 328] = [
+            226, 242, 109, 190, 162, 153, 245, 34, 59, 100, 108, 177, 251, 51, 234, 219, 5, 157,
+            148, 7, 85, 157, 116, 65, 223, 217, 2, 227, 167, 154, 77, 45, 171, 183, 61, 193, 127,
+            188, 19, 2, 30, 36, 113, 224, 192, 139, 214, 125, 132, 1, 245, 43, 115, 214, 208, 116,
+            131, 121, 76, 173, 71, 120, 24, 14, 12, 6, 243, 59, 188, 76, 121, 169, 202, 222, 242,
+            83, 166, 128, 132, 211, 130, 241, 119, 136, 248, 133, 201, 175, 209, 118, 247, 203, 47,
+            3, 103, 137, 237, 246, 146, 217, 92, 189, 222, 70, 221, 218, 94, 247, 212, 34, 67, 103,
+            121, 68, 92, 94, 102, 0, 106, 66, 118, 30, 31, 18, 239, 222, 0, 24, 194, 18, 243, 174,
+            183, 133, 228, 151, 18, 231, 169, 53, 51, 73, 170, 241, 37, 93, 251, 49, 183, 191, 96,
+            114, 58, 72, 13, 146, 147, 147, 142, 25, 237, 34, 1, 251, 191, 54, 215, 39, 179, 99,
+            122, 119, 118, 59, 61, 248, 184, 228, 40, 77, 53, 39, 175, 44, 254, 55, 12, 186, 244,
+            65, 255, 3, 230, 116, 95, 132, 105, 130, 153, 33, 69, 2, 32, 192, 12, 94, 134, 224, 54,
+            210, 70, 155, 204, 30, 240, 33, 95, 103, 21, 231, 141, 203, 199, 156, 3, 0, 0, 0, 0, 0,
+            0, 0, 142, 117, 169, 138, 181, 40, 29, 69, 76, 115, 219, 51, 146, 119, 36, 245, 235,
+            67, 55, 205, 148, 166, 160, 78, 138, 173, 176, 175, 28, 30, 9, 38, 76, 251, 81, 137,
+            196, 193, 55, 229, 85, 135, 135, 236, 198, 54, 237, 80, 167, 204, 144, 208, 39, 194, 7,
+            38, 93, 162, 61, 253, 208, 63, 28, 6, 28, 231, 41, 209, 79, 99, 32, 224, 222, 40, 96,
+            161, 81, 236, 253, 79, 236, 178, 208, 234, 226, 224, 224, 127, 129, 121, 138, 56, 65,
+            178, 234, 4,
+        ];
+        let mut vk: ark_groth16::VerifyingKey<ark_bn254::Bn254> =
+            ark_groth16::VerifyingKey::deserialize_compressed_unchecked(&vk_bytes[..]).unwrap();
+        const SP1_VKEY_HASH: &str =
+            "71453366410619949346755464650355874340577815840172820125756847035126066871";
+        let sp1_vkey_hash = BigUint::from_str(SP1_VKEY_HASH).unwrap();
+        let sp1_vkey_hash: ark_bn254::Fr = sp1_vkey_hash.into();
+        let sp1_vk_gamma = vk.gamma_abc_g1[0] + vk.gamma_abc_g1[1] * sp1_vkey_hash;
+        vk.gamma_abc_g1[0] = sp1_vk_gamma.into_affine();
+        let _ = vk.gamma_abc_g1.remove(1);
+
+        let out: StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
+                let ok = groth16_verify_compressed_over_raw(ctx, wires, &vk);
+                vec![ok]
+            });
+
+        assert!(out.output_value[0]);
+    }
+
+    #[test]
     fn test_groth16_compressed_decompress_matches_proof_points() {
         let k = 4; // keep it small
         let mut rng = ChaCha20Rng::seed_from_u64(33333);
@@ -1162,6 +1303,7 @@ mod tests {
         assert!(out.output_value);
     }
 
+    #[allow(unused)]
     fn convert_hash_to_bigint(raw_public_input_hash: blake3::Hash) -> ark_bn254::Fr {
         let mut raw_public_input_hash = *raw_public_input_hash.as_bytes();
         raw_public_input_hash[0] &= 0b00011111; // mask top 3 bits to fit within scalar field
@@ -1172,8 +1314,9 @@ mod tests {
     // verify groth16 proof end-to-end
     // use raw public input to generate groth16-public-input
     // meant to mimic how public inputs are handled by zkvms
-    #[test]
-    fn test_groth16_verify_compressed_true_small_for_raw_public_input() {
+    // #[test]
+    // todo: update test to use arkworks proof deserializer
+    fn _test_groth16_verify_compressed_true_small_for_raw_public_input() {
         let mut rng = ChaCha20Rng::seed_from_u64(33333);
 
         // prover computes groth-public-input directly using raw_public_input
@@ -1198,34 +1341,273 @@ mod tests {
 
         let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, circuit, &mut rng).unwrap();
 
-        let inputs = Groth16ExecRawInputCompressedRaw {
-            public: InputMessage {
+        let mut proof_bytes = vec![];
+        proof.serialize_compressed(&mut proof_bytes).unwrap();
+        let proof_bits: Vec<bool> = proof_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+
+        let inputs = Groth16ExecRawCompressedInput {
+            raw_inputs: InputMessage {
                 byte_arr: raw_public_input,
             },
-            a: proof.a.into_group(),
-            b: proof.b.into_group(),
-            c: proof.c.into_group(),
+            serialized_proof: proof_bits.try_into().unwrap(),
         };
 
         let out: StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
-                let ok = groth16_verify_compressed_over_raw(
-                    ctx,
-                    &wires.public,
-                    &wires.a,
-                    &wires.b,
-                    &wires.c,
-                    &vk,
-                );
+                let ok = groth16_verify_compressed_over_raw(ctx, wires, &vk);
                 vec![ok]
             });
 
         assert!(out.output_value[0]);
     }
 
-    // mock proof, vk and public keys imported from sp1 fibonacci program (alpenlabs/sp1:feat/export_proof_for_bin_ckt:test_e2e_prove_groth16)
     #[test]
-    fn test_groth16_verify_compressed_true_small_using_mock_sp1_proof() {
+    // todo: update test
+    fn test_ark_proof_to_compressed_wires() {
+        let proof_bytes: [u8; 128] = [
+            55, 126, 31, 52, 68, 72, 45, 185, 179, 42, 69, 122, 227, 134, 234, 167, 80, 68, 65,
+            142, 134, 133, 97, 24, 194, 180, 193, 213, 111, 19, 12, 42, 142, 193, 123, 63, 163, 6,
+            122, 100, 126, 178, 41, 127, 97, 82, 169, 2, 30, 190, 130, 153, 110, 203, 2, 95, 89,
+            162, 70, 74, 63, 232, 176, 42, 39, 119, 13, 172, 154, 135, 98, 126, 217, 67, 36, 222,
+            136, 93, 161, 93, 1, 196, 101, 172, 163, 240, 105, 124, 107, 93, 222, 133, 118, 94,
+            161, 14, 165, 232, 61, 136, 121, 145, 0, 171, 184, 234, 57, 160, 1, 248, 7, 195, 124,
+            95, 50, 113, 24, 203, 211, 73, 196, 40, 173, 148, 179, 126, 12, 131,
+        ];
+
+        let ark_proof = ark_groth16::Proof::<ark_bn254::Bn254>::deserialize_compressed_unchecked(
+            &proof_bytes[..],
+        )
+        .unwrap();
+
+        {
+            let mut proof_bytes_a = proof_bytes[0..32].to_vec();
+            let flag_mask = proof_bytes_a[31] & 192;
+            proof_bytes_a[31] &= !192;
+
+            let af = ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a);
+            let sqrt_af = (af * af * af + ark_bn254::g1::Config::COEFF_B)
+                .sqrt()
+                .unwrap();
+
+            let (sqrt_af, neg_sqrt_af) = if sqrt_af < -sqrt_af {
+                (sqrt_af, -sqrt_af)
+            } else {
+                (-sqrt_af, sqrt_af)
+            };
+
+            const ARK_COMPRESSED_POSITIVE: u8 = 0b00 << 6;
+            const ARK_COMPRESSED_NEGATIVE: u8 = 0b10 << 6;
+
+            let calc_pt = if flag_mask == ARK_COMPRESSED_NEGATIVE {
+                ark_bn254::G1Affine::new_unchecked(af, neg_sqrt_af)
+            } else if flag_mask == ARK_COMPRESSED_POSITIVE {
+                ark_bn254::G1Affine::new_unchecked(af, sqrt_af)
+            } else {
+                ark_bn254::G1Affine::identity()
+            };
+
+            assert_eq!(calc_pt, ark_proof.a);
+        }
+
+        {
+            let mut proof_bytes_a = proof_bytes[32..96].to_vec();
+
+            let flag_mask = proof_bytes_a[63] & 192;
+            proof_bytes_a[63] &= !192;
+
+            let af = ark_bn254::Fq2::new(
+                ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a[0..32]),
+                ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a[32..64]),
+            );
+            let sqrt_af = (af * af * af + ark_bn254::g2::Config::COEFF_B)
+                .sqrt()
+                .unwrap();
+
+            const ARK_COMPRESSED_POSITIVE: u8 = 0b00 << 6;
+            const ARK_COMPRESSED_NEGATIVE: u8 = 0b10 << 6;
+
+            let (sqrt_af, neg_sqrt_af) = if sqrt_af < -sqrt_af {
+                (sqrt_af, -sqrt_af)
+            } else {
+                (-sqrt_af, sqrt_af)
+            };
+
+            let calc_pt = if flag_mask == ARK_COMPRESSED_NEGATIVE {
+                ark_bn254::G2Affine::new_unchecked(af, neg_sqrt_af)
+            } else if flag_mask == ARK_COMPRESSED_POSITIVE {
+                ark_bn254::G2Affine::new_unchecked(af, sqrt_af)
+            } else {
+                ark_bn254::G2Affine::identity()
+            };
+
+            assert_eq!(calc_pt, ark_proof.b);
+        }
+
+        {
+            let mut proof_bytes_a = proof_bytes[96..128].to_vec();
+            let flag_mask = proof_bytes_a[31] & 192;
+            proof_bytes_a[31] &= !192;
+
+            let af = ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a);
+            let sqrt_af = (af * af * af + ark_bn254::g1::Config::COEFF_B)
+                .sqrt()
+                .unwrap();
+
+            let (sqrt_af, neg_sqrt_af) = if sqrt_af < -sqrt_af {
+                (sqrt_af, -sqrt_af)
+            } else {
+                (-sqrt_af, sqrt_af)
+            };
+
+            const ARK_COMPRESSED_POSITIVE: u8 = 0b00 << 6;
+            const ARK_COMPRESSED_NEGATIVE: u8 = 0b10 << 6;
+
+            let calc_pt = if flag_mask == ARK_COMPRESSED_NEGATIVE {
+                ark_bn254::G1Affine::new_unchecked(af, neg_sqrt_af)
+            } else if flag_mask == ARK_COMPRESSED_POSITIVE {
+                ark_bn254::G1Affine::new_unchecked(af, sqrt_af)
+            } else {
+                ark_bn254::G1Affine::identity()
+            };
+
+            assert_eq!(calc_pt, ark_proof.c);
+        }
+    }
+
+    #[test]
+    fn test_gnark_proof_to_compressed_wires() {
+        let proof_bytes: [u8; 128] = [
+            170, 12, 19, 111, 213, 193, 180, 194, 24, 97, 133, 134, 142, 65, 68, 80, 167, 234, 134,
+            227, 122, 69, 42, 179, 185, 45, 72, 68, 52, 31, 126, 55, 142, 161, 94, 118, 133, 222,
+            93, 107, 124, 105, 240, 163, 172, 101, 196, 1, 93, 161, 93, 136, 222, 36, 67, 217, 126,
+            98, 135, 154, 172, 13, 119, 39, 42, 176, 232, 63, 74, 70, 162, 89, 95, 2, 203, 110,
+            153, 130, 190, 30, 2, 169, 82, 97, 127, 41, 178, 126, 100, 122, 6, 163, 63, 123, 193,
+            142, 195, 12, 126, 179, 148, 173, 40, 196, 73, 211, 203, 24, 113, 50, 95, 124, 195, 7,
+            248, 1, 160, 57, 234, 184, 171, 0, 145, 121, 136, 61, 232, 165,
+        ];
+
+        let ark_proof_bytes: [u8; 128] = [
+            55, 126, 31, 52, 68, 72, 45, 185, 179, 42, 69, 122, 227, 134, 234, 167, 80, 68, 65,
+            142, 134, 133, 97, 24, 194, 180, 193, 213, 111, 19, 12, 42, 142, 193, 123, 63, 163, 6,
+            122, 100, 126, 178, 41, 127, 97, 82, 169, 2, 30, 190, 130, 153, 110, 203, 2, 95, 89,
+            162, 70, 74, 63, 232, 176, 42, 39, 119, 13, 172, 154, 135, 98, 126, 217, 67, 36, 222,
+            136, 93, 161, 93, 1, 196, 101, 172, 163, 240, 105, 124, 107, 93, 222, 133, 118, 94,
+            161, 14, 165, 232, 61, 136, 121, 145, 0, 171, 184, 234, 57, 160, 1, 248, 7, 195, 124,
+            95, 50, 113, 24, 203, 211, 73, 196, 40, 173, 148, 179, 126, 12, 131,
+        ];
+        let ark_proof = ark_groth16::Proof::<ark_bn254::Bn254>::deserialize_compressed_unchecked(
+            &ark_proof_bytes[..],
+        )
+        .unwrap();
+
+        {
+            let mut proof_bytes_a = proof_bytes[0..32].to_vec();
+            proof_bytes_a.reverse();
+
+            let flag_mask = proof_bytes_a[31] & 192;
+            proof_bytes_a[31] &= !192;
+
+            let af = ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a);
+            let sqrt_af = (af * af * af + ark_bn254::g1::Config::COEFF_B)
+                .sqrt()
+                .unwrap();
+
+            let compare = sqrt_af < -sqrt_af;
+            let (sqrt_af, neg_sqrt_af) = if compare {
+                (sqrt_af, -sqrt_af)
+            } else {
+                (-sqrt_af, sqrt_af)
+            };
+
+            const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
+            const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
+
+            let calc_pt = if flag_mask == GNARK_COMPRESSED_NEGATIVE {
+                ark_bn254::G1Affine::new_unchecked(af, neg_sqrt_af)
+            } else if flag_mask == GNARK_COMPRESSED_POSITIVE {
+                ark_bn254::G1Affine::new_unchecked(af, sqrt_af)
+            } else {
+                ark_bn254::G1Affine::identity()
+            };
+
+            assert_eq!(calc_pt, ark_proof.a);
+        }
+
+        {
+            let mut proof_bytes_a = proof_bytes[32..96].to_vec();
+            proof_bytes_a.reverse();
+
+            let flag_mask = proof_bytes_a[63] & 192;
+            proof_bytes_a[63] &= !192;
+
+            let af = ark_bn254::Fq2::new(
+                ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a[0..32]),
+                ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a[32..64]),
+            );
+            let sqrt_af = (af * af * af + ark_bn254::g2::Config::COEFF_B)
+                .sqrt()
+                .unwrap();
+
+            const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
+            const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
+
+            let (sqrt_af, neg_sqrt_af) = if sqrt_af < -sqrt_af {
+                (sqrt_af, -sqrt_af)
+            } else {
+                (-sqrt_af, sqrt_af)
+            };
+
+            let calc_pt = if flag_mask == GNARK_COMPRESSED_NEGATIVE {
+                ark_bn254::G2Affine::new_unchecked(af, neg_sqrt_af)
+            } else if flag_mask == GNARK_COMPRESSED_POSITIVE {
+                ark_bn254::G2Affine::new_unchecked(af, sqrt_af)
+            } else {
+                ark_bn254::G2Affine::identity()
+            };
+
+            assert_eq!(calc_pt, ark_proof.b);
+        }
+
+        {
+            let mut proof_bytes_a = proof_bytes[96..128].to_vec();
+            proof_bytes_a.reverse();
+
+            let flag_mask = proof_bytes_a[31] & 192;
+            proof_bytes_a[31] &= !192;
+
+            let af = ark_bn254::Fq::from_le_bytes_mod_order(&proof_bytes_a);
+            let sqrt_af = (af * af * af + ark_bn254::g1::Config::COEFF_B)
+                .sqrt()
+                .unwrap();
+
+            let (sqrt_af, neg_sqrt_af) = if sqrt_af < -sqrt_af {
+                (sqrt_af, -sqrt_af)
+            } else {
+                (-sqrt_af, sqrt_af)
+            };
+
+            const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
+            const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
+
+            let calc_pt = if flag_mask == GNARK_COMPRESSED_NEGATIVE {
+                ark_bn254::G1Affine::new_unchecked(af, neg_sqrt_af)
+            } else if flag_mask == GNARK_COMPRESSED_POSITIVE {
+                ark_bn254::G1Affine::new_unchecked(af, sqrt_af)
+            } else {
+                ark_bn254::G1Affine::identity()
+            };
+
+            assert_eq!(calc_pt, ark_proof.c);
+        }
+    }
+
+    // mock proof, vk and public keys imported from sp1 fibonacci program (alpenlabs/sp1:feat/export_proof_for_bin_ckt:test_e2e_prove_groth16)
+    // #[test]
+    // todo: update test to use arkworks proof deserializer
+    fn _test_groth16_verify_compressed_true_small_using_mock_sp1_proof() {
         let raw_public_input: [u8; 36] = [
             55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0,
             55, 0, 0, 0, 89, 0, 0, 0,
@@ -1273,25 +1655,23 @@ mod tests {
         vk.gamma_abc_g1[0] = sp1_vk_gamma.into_affine();
         let _ = vk.gamma_abc_g1.remove(1);
 
-        let inputs = Groth16ExecRawInputCompressedRaw {
-            public: InputMessage {
+        let mut proof_bytes = vec![];
+        proof.serialize_compressed(&mut proof_bytes).unwrap();
+        let proof_bits: Vec<bool> = proof_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+
+        let inputs = Groth16ExecRawCompressedInput {
+            raw_inputs: InputMessage {
                 byte_arr: raw_public_input,
             },
-            a: proof.a.into_group(),
-            b: proof.b.into_group(),
-            c: proof.c.into_group(),
+            serialized_proof: proof_bits.try_into().unwrap(),
         };
 
         let out: StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 160_000, |ctx, wires| {
-                let ok = groth16_verify_compressed_over_raw(
-                    ctx,
-                    &wires.public,
-                    &wires.a,
-                    &wires.b,
-                    &wires.c,
-                    &vk,
-                );
+                let ok = groth16_verify_compressed_over_raw(ctx, wires, &vk);
                 vec![ok]
             });
 

@@ -297,6 +297,14 @@ impl Fq {
             &BigUint::from_str(Self::MODULUS_ADD_1_DIV_4).unwrap(),
         )
     }
+
+    pub fn greater_than<C: CircuitContext>(circuit: &mut C, a: &Fq, b: &Fq) -> WireId {
+        // convert a and b to standard form
+        let rinv = Fq::from_montgomery(ark_bn254::Fq::ONE);
+        let a = Fq::mul_by_constant_montgomery(circuit, a, &rinv);
+        let b = Fq::mul_by_constant_montgomery(circuit, b, &rinv);
+        bigint::greater_than(circuit, &a, &b)
+    }
 }
 
 #[cfg(test)]

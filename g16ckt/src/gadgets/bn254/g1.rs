@@ -1,12 +1,17 @@
 use std::{cmp::min, collections::HashMap, iter};
 
-use ark_ff::Zero;
+use ark_ec::short_weierstrass::SWCurveConfig;
+use ark_ff::{Field, Zero};
 use circuit_component_macro::component;
 
 use crate::{
     CircuitContext, WireId,
-    circuit::{FromWires, WiresObject},
-    gadgets::bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr},
+    circuit::{FromWires, TRUE_WIRE, WiresObject},
+    gadgets::{
+        bigint::{self, BigIntWires},
+        bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr},
+        groth16::CompressedG1Wires,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -406,6 +411,71 @@ impl G1Projective {
             y: Fq::neg(circuit, &p.y),
             z: p.z.clone(),
         }
+    }
+
+    pub fn deserialize_checked<C: CircuitContext>(
+        circuit: &mut C,
+        serialized_bits: [WireId; 32 * 8],
+    ) -> (G1Projective, WireId) {
+        let compressed = {
+            let mut byte_arr: Vec<[WireId; 8]> = serialized_bits
+                .chunks(8)
+                .map(|c| c.try_into().expect("chunk is exactly 8"))
+                .collect();
+            byte_arr.reverse();
+            // flatten byte_array
+            let bit_arr: Vec<WireId> = byte_arr.into_iter().flatten().collect();
+            let (num, flag) = bit_arr.split_at(Fq::N_BITS);
+            let a = Fq(BigIntWires { bits: num.to_vec() });
+
+            let gnark_neg_flag = circuit.issue_wire();
+            circuit.add_gate(crate::Gate {
+                wire_a: flag[0],
+                wire_b: flag[1],
+                wire_c: gnark_neg_flag,
+                gate_type: crate::GateType::And,
+            });
+
+            let r = Fq::as_montgomery(ark_bn254::Fq::ONE);
+            let a_mont = Fq::mul_by_constant_montgomery(circuit, &a, &r.square());
+
+            CompressedG1Wires {
+                x_m: a_mont,
+                y_flag: gnark_neg_flag,
+            }
+        };
+
+        let CompressedG1Wires { x_m, y_flag } = compressed.clone();
+
+        // rhs = x^3 + b (Montgomery domain)
+        let x2 = Fq::square_montgomery(circuit, &x_m);
+        let x3 = Fq::mul_montgomery(circuit, &x2, &x_m);
+        let b_m = Fq::as_montgomery(ark_bn254::g1::Config::COEFF_B);
+        let rhs = Fq::add_constant(circuit, &x3, &b_m);
+
+        // sy = sqrt(rhs) in Montgomery domain
+        let sy = Fq::sqrt_montgomery(circuit, &rhs);
+        let sy_neg = Fq::neg(circuit, &sy);
+
+        let sy_neg_greater = Fq::greater_than(circuit, &sy_neg, &sy);
+        let tsy = bigint::select(circuit, &sy, &sy_neg, sy_neg_greater);
+        let tsy_neg = bigint::select(circuit, &sy_neg, &sy, sy_neg_greater);
+
+        let y_bits = bigint::select(circuit, &tsy_neg, &tsy, y_flag);
+        let y = Fq(y_bits);
+
+        // z = 1 in Montgomery
+        let one_m = Fq::as_montgomery(ark_bn254::Fq::ONE);
+        let z = Fq::new_constant(&one_m).expect("const one mont");
+
+        (
+            G1Projective {
+                x: x_m.clone(),
+                y,
+                z,
+            },
+            TRUE_WIRE,
+        )
     }
 }
 

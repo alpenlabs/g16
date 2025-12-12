@@ -15,7 +15,8 @@ use crate::{
     CircuitContext, Gate, WireId,
     circuit::WiresObject,
     gadgets::{
-        bigint::{BigIntWires, select},
+        basic,
+        bigint::{self, BigIntWires, select},
         bn254::{fp254impl::Fp254Impl, fq::Fq},
     },
 };
@@ -443,6 +444,13 @@ impl Fq2 {
         let c1_final = Fq::mul_montgomery(circuit, &c0_inv, &c1_half); // c1 / (2 * c0)
 
         Fq2::from_components(c0_final, c1_final)
+    }
+
+    pub fn greater_than<C: CircuitContext>(circuit: &mut C, a: &Fq2, b: &Fq2) -> WireId {
+        let c1_equal = bigint::equal(circuit, a.c1(), b.c1());
+        let c1_greater = Fq::greater_than(circuit, a.c1(), b.c1());
+        let c0_greater = Fq::greater_than(circuit, a.c0(), b.c0());
+        basic::selector(circuit, c0_greater, c1_greater, c1_equal)
     }
 }
 

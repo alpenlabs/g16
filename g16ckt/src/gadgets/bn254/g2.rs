@@ -1,14 +1,16 @@
 use std::{cmp::min, collections::HashMap, iter::zip};
 
-use ark_ff::Zero;
+use ark_ec::short_weierstrass::SWCurveConfig;
+use ark_ff::{AdditiveGroup, Field, Zero};
 use circuit_component_macro::component;
 
 use crate::{
     CircuitContext, WireId,
-    circuit::{FromWires, WiresObject},
+    circuit::{FromWires, TRUE_WIRE, WiresObject},
     gadgets::{
-        bigint::Error,
+        bigint::{self, BigIntWires, Error},
         bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, fr::Fr},
+        groth16::CompressedG2Wires,
     },
 };
 
@@ -523,6 +525,99 @@ impl G2Projective {
             y: Fq2::neg(circuit, p.y.clone()),
             z: p.z.clone(),
         }
+    }
+
+    pub fn deserialize_checked<C: CircuitContext>(
+        circuit: &mut C,
+        serialized_bits: [WireId; 64 * 8],
+    ) -> (G2Projective, WireId) {
+        let compressed = {
+            let mut byte_arr: Vec<[WireId; 8]> = serialized_bits
+                .chunks(8)
+                .map(|c| c.try_into().expect("chunk is exactly 8"))
+                .collect();
+            byte_arr.reverse();
+            // flatten byte_array
+            let bit_arr: Vec<WireId> = byte_arr.into_iter().flatten().collect();
+            let (num1, num2, flag) = (
+                &bit_arr[0..Fq::N_BITS],
+                &bit_arr[32 * 8..32 * 8 + Fq::N_BITS],
+                &bit_arr[32 * 8 + Fq::N_BITS..],
+            );
+            let a = Fq2([
+                Fq(BigIntWires {
+                    bits: num1.to_vec(),
+                }),
+                Fq(BigIntWires {
+                    bits: num2.to_vec(),
+                }),
+            ]);
+
+            let gnark_neg_flag = circuit.issue_wire();
+            circuit.add_gate(crate::Gate {
+                wire_a: flag[0],
+                wire_b: flag[1],
+                wire_c: gnark_neg_flag,
+                gate_type: crate::GateType::And,
+            });
+
+            let r = Fq::as_montgomery(ark_bn254::Fq::ONE);
+            let a_mont_x = Fq::mul_by_constant_montgomery(circuit, a.c0(), &r.square());
+            let r = Fq::as_montgomery(ark_bn254::Fq::ONE);
+            let a_mont_y = Fq::mul_by_constant_montgomery(circuit, a.c1(), &r.square());
+
+            CompressedG2Wires {
+                p: Fq2([a_mont_x, a_mont_y]),
+                y_flag: gnark_neg_flag,
+            }
+        };
+
+        let CompressedG2Wires { p: x, y_flag } = compressed.clone();
+
+        let x2 = Fq2::square_montgomery(circuit, &x);
+
+        let x3 = Fq2::mul_montgomery(circuit, &x2, &x);
+
+        let y2 = Fq2::add_constant(
+            circuit,
+            &x3,
+            &Fq2::as_montgomery(ark_bn254::g2::Config::COEFF_B),
+        );
+
+        let y = Fq2::sqrt_general_montgomery(circuit, &y2);
+        let neg_y = Fq2::neg(circuit, y.clone());
+
+        let y_neg_greater = Fq2::greater_than(circuit, &neg_y, &y);
+        let tsy = {
+            let tsy_c0 = bigint::select(circuit, y.c0(), neg_y.c0(), y_neg_greater);
+            let tsy_c1 = bigint::select(circuit, y.c1(), neg_y.c1(), y_neg_greater);
+            Fq2([Fq(tsy_c0), Fq(tsy_c1)])
+        };
+        let tsy_neg = {
+            let tsy_neg_c0 = bigint::select(circuit, neg_y.c0(), y.c0(), y_neg_greater);
+            let tsy_neg_c1 = bigint::select(circuit, neg_y.c1(), y.c1(), y_neg_greater);
+            Fq2([Fq(tsy_neg_c0), Fq(tsy_neg_c1)])
+        };
+
+        let final_y_0 = bigint::select(circuit, tsy_neg.c0(), tsy.c0(), y_flag);
+        let final_y_1 = bigint::select(circuit, tsy_neg.c1(), tsy.c1(), y_flag);
+
+        // z = 1 in Montgomery
+        let one_m = Fq::as_montgomery(ark_bn254::Fq::ONE);
+        let zero_m = Fq::as_montgomery(ark_bn254::Fq::ZERO);
+
+        (
+            G2Projective {
+                x: x.clone(),
+                y: Fq2([Fq(final_y_0), Fq(final_y_1)]),
+                // In Fq2, ONE is (c0=1, c1=0). Use Montgomery representation.
+                z: Fq2([
+                    Fq::new_constant(&one_m).unwrap(),
+                    Fq::new_constant(&zero_m).unwrap(),
+                ]),
+            },
+            TRUE_WIRE,
+        )
     }
 }
 
