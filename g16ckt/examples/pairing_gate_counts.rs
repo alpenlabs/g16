@@ -327,7 +327,7 @@ fn main() {
                     let b = Fq2::as_montgomery(ark::g2::Config::COEFF_B);
                     let y2 = Fq2::add_constant(ctx, &x3, &b);
                     let y = Fq2::sqrt_general_montgomery(ctx, &y2);
-                    let neg_y = Fq2::neg(ctx, y.clone());
+                    let neg_y = Fq2::neg(ctx, &y);
                     let y0 = gsv::gadgets::bigint::select(
                         ctx,
                         y.c0(),
