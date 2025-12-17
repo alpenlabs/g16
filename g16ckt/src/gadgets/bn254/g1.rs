@@ -11,6 +11,7 @@ use crate::{
     gadgets::{
         bigint::{self, BigIntWires},
         bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr},
+        groth16::ProofType,
     },
 };
 
@@ -443,8 +444,18 @@ impl G1Projective {
     pub fn deserialize_checked<C: CircuitContext>(
         circuit: &mut C,
         serialized_bits: [WireId; 32 * 8],
+        proof_type: ProofType,
     ) -> DecompressedG1Wires {
         let (x_m, is_x_m_valid, flag) = {
+            let mut byte_arr: Vec<[WireId; 8]> = serialized_bits
+                .chunks(8)
+                .map(|c| c.try_into().expect("chunk is exactly 8"))
+                .collect();
+            if proof_type == ProofType::GNARK {
+                byte_arr.reverse();
+            }
+            let serialized_bits: Vec<WireId> = byte_arr.into_iter().flatten().collect();
+
             let (num, flag) = serialized_bits.split_at(Fq::N_BITS);
             let a = BigIntWires { bits: num.to_vec() };
             // check BigUint is a valid fq
@@ -458,45 +469,82 @@ impl G1Projective {
         };
 
         // Part 1: Extract Flags
+        // const GNARK_MASK: u8 = 0b11 << 6;
+        // const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
+        // const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
+        // const GNARK_COMPRESSED_INFINITY: u8 = 0b01 << 6;
 
+        // const ARK_MASK: u8 = 0b11 << 6;
+        // const ARK_COMPRESSED_POSITIVE: u8 = 0b00 << 6;
+        // const ARK_COMPRESSED_NEGATIVE: u8 = 0b10 << 6;
+        // const ARK_COMPRESSED_INFINITY: u8 = 0b01 << 6;
         let is_y_positive = {
-            // In arkworks, given:
-            // const Y_IS_POSITIVE: u8 = 0;
-            let flag_or = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag[0],
-                wire_b: flag[1],
-                wire_c: flag_or,
-                gate_type: crate::GateType::Or,
-            });
-            let flag_nor = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag_or,
-                wire_b: TRUE_WIRE,
-                wire_c: flag_nor,
-                gate_type: crate::GateType::Xor,
-            });
-            flag_nor
+            if proof_type == ProofType::ARK {
+                // 00
+                let flag_or = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[0],
+                    wire_b: flag[1],
+                    wire_c: flag_or,
+                    gate_type: crate::GateType::Or,
+                });
+                let flag_nor = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag_or,
+                    wire_b: TRUE_WIRE,
+                    wire_c: flag_nor,
+                    gate_type: crate::GateType::Xor,
+                });
+                flag_nor
+            } else {
+                // 10
+                let tmp0 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[0],
+                    wire_b: TRUE_WIRE,
+                    wire_c: tmp0,
+                    gate_type: crate::GateType::Xor,
+                });
+                let tmp1 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[1],
+                    wire_b: tmp0,
+                    wire_c: tmp1,
+                    gate_type: crate::GateType::And,
+                });
+                tmp1
+            }
         };
 
         let is_y_negative = {
-            // In arkworks, given:
-            // const Y_IS_NEGATIVE: u8 = 1 << 7;
-            let tmp0 = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag[0],
-                wire_b: TRUE_WIRE,
-                wire_c: tmp0,
-                gate_type: crate::GateType::Xor,
-            });
-            let tmp1 = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag[1],
-                wire_b: tmp0,
-                wire_c: tmp1,
-                gate_type: crate::GateType::And,
-            });
-            tmp1
+            if proof_type == ProofType::ARK {
+                // 10
+                let tmp0 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[0],
+                    wire_b: TRUE_WIRE,
+                    wire_c: tmp0,
+                    gate_type: crate::GateType::Xor,
+                });
+                let tmp1 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[1],
+                    wire_b: tmp0,
+                    wire_c: tmp1,
+                    gate_type: crate::GateType::And,
+                });
+                tmp1
+            } else {
+                // 11
+                let tmp1 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[1],
+                    wire_b: flag[0],
+                    wire_c: tmp1,
+                    gate_type: crate::GateType::And,
+                });
+                tmp1
+            }
         };
 
         // rest of the flags (11 and 01) represent identity and None, so are invalid flags
@@ -1064,7 +1112,7 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
-                let res = G1Projective::deserialize_checked(ctx, *wires);
+                let res = G1Projective::deserialize_checked(ctx, *wires, ProofType::ARK);
                 let dec = res.point;
 
                 let exp = G1Projective::as_montgomery(p.into());
@@ -1107,7 +1155,7 @@ mod tests {
 
             let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
                 CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
-                    let dec = G1Projective::deserialize_checked(ctx, *wires);
+                    let dec = G1Projective::deserialize_checked(ctx, *wires, ProofType::ARK);
                     vec![dec.is_valid]
                 });
             let calc_is_valid = out.output_value[0];

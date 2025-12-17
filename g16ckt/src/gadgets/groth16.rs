@@ -248,7 +248,7 @@ pub fn groth16_verify_compressed<C: CircuitContext>(
     circuit: &mut C,
     input: &Groth16VerifyCompressedInputWires,
 ) -> crate::WireId {
-    let proof = input.proof.deserialize_checked(circuit);
+    let proof = input.proof.deserialize_checked(circuit, input.proof_type);
 
     let verified_res = groth16_verify(
         circuit,
@@ -373,6 +373,7 @@ impl<M: CircuitMode<WireValue = bool>> EncodeInput<M> for Groth16VerifyInput {
 }
 
 impl Groth16VerifyInput {
+    /// compress to ark proof
     pub fn compress(self) -> Groth16VerifyCompressedInput {
         let public = self.public.into_iter().map(|x| x.into()).collect();
         let mut proof_bytes = Vec::new();
@@ -391,6 +392,7 @@ impl Groth16VerifyInput {
             public,
             proof: proof_bits.try_into().unwrap(),
             vk: self.vk,
+            proof_type: ProofType::ARK,
         }
     }
 }
@@ -401,6 +403,7 @@ pub struct Groth16VerifyCompressedInput {
     pub public: Vec<BigUint>,
     pub proof: SerializedCompressedProof, // 128 byte proof
     pub vk: VerifyingKey<Bn254>,
+    pub proof_type: ProofType,
 }
 
 /// Compressed groth16 proof with public inputs
@@ -409,6 +412,7 @@ pub struct Groth16VerifyCompressedInputWires {
     pub public: Vec<Fr>,
     pub proof: SerializedCompressedProofWires,
     pub vk: VerifyingKey<Bn254>,
+    pub proof_type: ProofType,
 }
 
 /// Serialized 128 byte representation of groth16 proof in arkworks' serialized format
@@ -434,14 +438,15 @@ impl SerializedCompressedProofWires {
     pub fn deserialize_checked<C: CircuitContext>(
         &self,
         circuit: &mut C,
+        proof_type: ProofType,
     ) -> DeserializedCompressedProofWires {
         let compressed_a: [WireId; 32 * 8] = self.0[0..32 * 8].try_into().unwrap();
         let compressed_b: [WireId; 64 * 8] = self.0[32 * 8..96 * 8].try_into().unwrap();
         let compressed_c: [WireId; 32 * 8] = self.0[96 * 8..].try_into().unwrap();
 
-        let a_decomp = G1Projective::deserialize_checked(circuit, compressed_a);
-        let b_decomp = G2Projective::deserialize_checked(circuit, compressed_b);
-        let c_decomp = G1Projective::deserialize_checked(circuit, compressed_c);
+        let a_decomp = G1Projective::deserialize_checked(circuit, compressed_a, proof_type);
+        let b_decomp = G2Projective::deserialize_checked(circuit, compressed_b, proof_type);
+        let c_decomp = G1Projective::deserialize_checked(circuit, compressed_c, proof_type);
 
         let ab_valid = circuit.issue_wire();
         let abc_valid = circuit.issue_wire();
@@ -487,6 +492,7 @@ impl WiresObject for Groth16VerifyCompressedInputWires {
             public: self.public.iter().map(|_| Fr::new(&mut issue)).collect(),
             proof: self.proof.clone_from(issue),
             vk: self.vk.clone(),
+            proof_type: self.proof_type,
         }
     }
 }
@@ -499,6 +505,7 @@ impl CircuitInput for Groth16VerifyCompressedInput {
             public: self.public.iter().map(|_| Fr::new(&mut issue)).collect(),
             proof: SerializedCompressedProofWires::new(&mut issue),
             vk: self.vk.clone(),
+            proof_type: self.proof_type,
         }
     }
     fn collect_wire_ids(repr: &Self::WireRepr) -> Vec<crate::WireId> {
@@ -530,11 +537,17 @@ impl<M: CircuitMode<WireValue = bool>> EncodeInput<M> for Groth16VerifyCompresse
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProofType {
+    GNARK,
+    ARK,
+}
 /// Compressed representation of groth16 proof
 pub struct Groth16VerifyCompressedRawInput<const N: usize> {
     pub public: InputMessage<N>,
     pub proof: SerializedCompressedProof, // 128 byte proof
     pub vk: VerifyingKey<Bn254>,
+    pub proof_type: ProofType,
 }
 
 /// Compressed groth16 proof with public inputs
@@ -543,6 +556,7 @@ pub struct Groth16VerifyCompressedRawInputWires<const N: usize> {
     pub public: InputMessageWires<N>,
     pub proof: SerializedCompressedProofWires,
     pub vk: VerifyingKey<Bn254>,
+    pub proof_type: ProofType,
 }
 
 impl<const N: usize> WiresObject for Groth16VerifyCompressedRawInputWires<N> {
@@ -555,6 +569,7 @@ impl<const N: usize> WiresObject for Groth16VerifyCompressedRawInputWires<N> {
             public: self.public.clone_from(issue),
             proof: self.proof.clone_from(issue),
             vk: self.vk.clone(),
+            proof_type: self.proof_type,
         }
     }
 }
@@ -567,6 +582,7 @@ impl<const N: usize> CircuitInput for Groth16VerifyCompressedRawInput<N> {
             public: InputMessageWires::new(&mut issue),
             proof: SerializedCompressedProofWires::new(&mut issue),
             vk: self.vk.clone(),
+            proof_type: self.proof_type,
         }
     }
     fn collect_wire_ids(repr: &Self::WireRepr) -> Vec<crate::WireId> {
@@ -616,6 +632,7 @@ pub fn groth16_verify_compressed_over_raw_public_input<const N: usize, C: Circui
         public: hash_fr,
         proof: input.proof,
         vk: input.vk.clone(),
+        proof_type: input.proof_type,
     };
     groth16_verify_compressed(circuit, &input_wires)
 }
@@ -1015,7 +1032,7 @@ mod tests {
 
         let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
-                let proof_dec = wires.proof.deserialize_checked(ctx);
+                let proof_dec = wires.proof.deserialize_checked(ctx, ProofType::ARK);
 
                 let a_dec = proof_dec.a;
                 let b_dec = proof_dec.b;
@@ -1288,11 +1305,12 @@ mod tests {
             public: vec![],
             proof: ark_proof_bits.try_into().unwrap(),
             vk: ark_groth16::VerifyingKey::default(),
+            proof_type: ProofType::ARK,
         };
 
         let result: StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
-                let result_wires = wires.proof.deserialize_checked(ctx).b;
+                let result_wires = wires.proof.deserialize_checked(ctx, ProofType::ARK).b;
                 let mut output_ids = Vec::new();
                 output_ids.extend(result_wires.x.iter());
                 output_ids.extend(result_wires.y.iter());
@@ -1364,6 +1382,7 @@ mod tests {
             },
             proof: ark_proof_bits.try_into().unwrap(),
             vk,
+            proof_type: ProofType::ARK,
         };
 
         let out: StreamingResult<_, _, Vec<bool>> =
@@ -1377,20 +1396,20 @@ mod tests {
 
     // mock proof, vk and public keys imported from sp1 fibonacci program (alpenlabs/sp1:feat/export_proof_for_bin_ckt:test_e2e_prove_groth16)
     #[test]
-    fn test_groth16_verify_compressed_true_small_using_mock_sp1_proof() {
+    fn test_groth16_verify_compressed_true_small_using_mock_sp1_proof_in_ark_format() {
         let raw_public_input: [u8; 36] = [
             55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0,
             55, 0, 0, 0, 89, 0, 0, 0,
         ];
 
         let proof_bytes: [u8; 128] = [
-            208, 124, 179, 175, 21, 109, 24, 174, 150, 229, 234, 62, 194, 4, 178, 72, 237, 224, 28,
-            240, 223, 242, 46, 98, 134, 7, 212, 187, 186, 1, 30, 152, 162, 105, 9, 230, 188, 90,
-            150, 105, 239, 11, 254, 197, 77, 229, 17, 104, 247, 229, 212, 209, 88, 90, 133, 132,
-            175, 43, 172, 181, 74, 147, 202, 38, 75, 78, 145, 234, 133, 96, 253, 250, 248, 2, 59,
-            202, 187, 178, 32, 199, 140, 232, 113, 158, 164, 26, 223, 17, 145, 34, 161, 94, 193,
-            33, 130, 151, 78, 88, 178, 191, 7, 214, 91, 3, 11, 103, 63, 176, 177, 27, 144, 186,
-            169, 10, 87, 121, 60, 201, 242, 216, 3, 58, 87, 164, 184, 136, 147, 10,
+            55, 126, 31, 52, 68, 72, 45, 185, 179, 42, 69, 122, 227, 134, 234, 167, 80, 68, 65,
+            142, 134, 133, 97, 24, 194, 180, 193, 213, 111, 19, 12, 42, 142, 193, 123, 63, 163, 6,
+            122, 100, 126, 178, 41, 127, 97, 82, 169, 2, 30, 190, 130, 153, 110, 203, 2, 95, 89,
+            162, 70, 74, 63, 232, 176, 42, 39, 119, 13, 172, 154, 135, 98, 126, 217, 67, 36, 222,
+            136, 93, 161, 93, 1, 196, 101, 172, 163, 240, 105, 124, 107, 93, 222, 133, 118, 94,
+            161, 14, 165, 232, 61, 136, 121, 145, 0, 171, 184, 234, 57, 160, 1, 248, 7, 195, 124,
+            95, 50, 113, 24, 203, 211, 73, 196, 40, 173, 148, 179, 126, 12, 131,
         ];
 
         let vk_bytes: [u8; 328] = [
@@ -1437,11 +1456,81 @@ mod tests {
             },
             proof: ark_proof_bits.try_into().unwrap(),
             vk,
+            proof_type: ProofType::ARK,
         };
 
         let out: StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 160_000, |ctx, wires| {
                 let ok = groth16_verify_compressed_over_raw_public_input(ctx, &wires);
+                vec![ok]
+            });
+
+        assert!(out.output_value[0]);
+    }
+
+    #[test]
+    fn test_groth16_verify_compressed_true_small_using_mock_sp1_proof_in_gnark_format() {
+        let proof_bytes: [u8; 128] = [
+            170, 12, 19, 111, 213, 193, 180, 194, 24, 97, 133, 134, 142, 65, 68, 80, 167, 234, 134,
+            227, 122, 69, 42, 179, 185, 45, 72, 68, 52, 31, 126, 55, 142, 161, 94, 118, 133, 222,
+            93, 107, 124, 105, 240, 163, 172, 101, 196, 1, 93, 161, 93, 136, 222, 36, 67, 217, 126,
+            98, 135, 154, 172, 13, 119, 39, 42, 176, 232, 63, 74, 70, 162, 89, 95, 2, 203, 110,
+            153, 130, 190, 30, 2, 169, 82, 97, 127, 41, 178, 126, 100, 122, 6, 163, 63, 123, 193,
+            142, 195, 12, 126, 179, 148, 173, 40, 196, 73, 211, 203, 24, 113, 50, 95, 124, 195, 7,
+            248, 1, 160, 57, 234, 184, 171, 0, 145, 121, 136, 61, 232, 165,
+        ];
+        let proof_bits: Vec<bool> = proof_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+
+        let raw_public_input: [u8; 36] = [
+            55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0,
+            55, 0, 0, 0, 89, 0, 0, 0,
+        ];
+
+        let vk_bytes: [u8; 328] = [
+            226, 242, 109, 190, 162, 153, 245, 34, 59, 100, 108, 177, 251, 51, 234, 219, 5, 157,
+            148, 7, 85, 157, 116, 65, 223, 217, 2, 227, 167, 154, 77, 45, 171, 183, 61, 193, 127,
+            188, 19, 2, 30, 36, 113, 224, 192, 139, 214, 125, 132, 1, 245, 43, 115, 214, 208, 116,
+            131, 121, 76, 173, 71, 120, 24, 14, 12, 6, 243, 59, 188, 76, 121, 169, 202, 222, 242,
+            83, 166, 128, 132, 211, 130, 241, 119, 136, 248, 133, 201, 175, 209, 118, 247, 203, 47,
+            3, 103, 137, 237, 246, 146, 217, 92, 189, 222, 70, 221, 218, 94, 247, 212, 34, 67, 103,
+            121, 68, 92, 94, 102, 0, 106, 66, 118, 30, 31, 18, 239, 222, 0, 24, 194, 18, 243, 174,
+            183, 133, 228, 151, 18, 231, 169, 53, 51, 73, 170, 241, 37, 93, 251, 49, 183, 191, 96,
+            114, 58, 72, 13, 146, 147, 147, 142, 25, 237, 34, 1, 251, 191, 54, 215, 39, 179, 99,
+            122, 119, 118, 59, 61, 248, 184, 228, 40, 77, 53, 39, 175, 44, 254, 55, 12, 186, 244,
+            65, 255, 3, 230, 116, 95, 132, 105, 130, 153, 33, 69, 2, 32, 192, 12, 94, 134, 224, 54,
+            210, 70, 155, 204, 30, 240, 33, 95, 103, 21, 231, 141, 203, 199, 156, 3, 0, 0, 0, 0, 0,
+            0, 0, 142, 117, 169, 138, 181, 40, 29, 69, 76, 115, 219, 51, 146, 119, 36, 245, 235,
+            67, 55, 205, 148, 166, 160, 78, 138, 173, 176, 175, 28, 30, 9, 38, 76, 251, 81, 137,
+            196, 193, 55, 229, 85, 135, 135, 236, 198, 54, 237, 80, 167, 204, 144, 208, 39, 194, 7,
+            38, 93, 162, 61, 253, 208, 63, 28, 6, 28, 231, 41, 209, 79, 99, 32, 224, 222, 40, 96,
+            161, 81, 236, 253, 79, 236, 178, 208, 234, 226, 224, 224, 127, 129, 121, 138, 56, 65,
+            178, 234, 4,
+        ];
+        let mut vk: ark_groth16::VerifyingKey<ark_bn254::Bn254> =
+            ark_groth16::VerifyingKey::deserialize_compressed_unchecked(&vk_bytes[..]).unwrap();
+        const SP1_VKEY_HASH: &str =
+            "71453366410619949346755464650355874340577815840172820125756847035126066871";
+        let sp1_vkey_hash = BigUint::from_str(SP1_VKEY_HASH).unwrap();
+        let sp1_vkey_hash: ark_bn254::Fr = sp1_vkey_hash.into();
+        let sp1_vk_gamma = vk.gamma_abc_g1[0] + vk.gamma_abc_g1[1] * sp1_vkey_hash;
+        vk.gamma_abc_g1[0] = sp1_vk_gamma.into_affine();
+        let _ = vk.gamma_abc_g1.remove(1);
+
+        let inputs = Groth16VerifyCompressedRawInput {
+            public: InputMessage {
+                byte_arr: raw_public_input,
+            },
+            proof: proof_bits.try_into().unwrap(),
+            vk: vk.clone(),
+            proof_type: ProofType::GNARK,
+        };
+
+        let out: StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(inputs, 80_000, |ctx, wires| {
+                let ok = groth16_verify_compressed_over_raw_public_input(ctx, wires);
                 vec![ok]
             });
 
