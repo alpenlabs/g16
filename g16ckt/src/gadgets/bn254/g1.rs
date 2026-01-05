@@ -609,7 +609,7 @@ mod tests {
     use ark_ec::{CurveGroup, PrimeGroup, VariableBaseMSM};
     use ark_ff::UniformRand;
     use ark_serialize::CanonicalSerialize;
-    use rand::{Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, thread_rng};
     use rand_chacha::ChaCha20Rng;
 
     use super::*;
@@ -624,7 +624,7 @@ mod tests {
     }
 
     pub fn rnd_g1(rng: &mut impl Rng) -> ark_bn254::G1Projective {
-        ark_bn254::G1Projective::default() * rnd_fr(rng)
+        ark_bn254::G1Projective::rand(rng) * rnd_fr(rng)
     }
 
     // Standardized input/output structures for G1 tests
@@ -681,8 +681,9 @@ mod tests {
     #[test]
     fn test_g1p_add_montgomery() {
         // Generate random G1 points
-        let a = rnd_g1(&mut trng());
-        let b = rnd_g1(&mut trng());
+        let mut rng = thread_rng();
+        let a = rnd_g1(&mut rng);
+        let b = rnd_g1(&mut rng);
         let c = a + b;
 
         // Convert to Montgomery form
