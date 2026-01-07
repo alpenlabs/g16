@@ -739,7 +739,6 @@ impl WiresArity for DecompressedG2Wires {
 mod tests {
     use ark_ff::UniformRand;
     use rand::{Rng, SeedableRng, thread_rng};
-    use rand_chacha::ChaCha20Rng;
 
     use super::*;
     use crate::{
@@ -748,13 +747,8 @@ mod tests {
         test_utils::trng,
     };
 
-    pub fn rnd_fr(rng: &mut impl Rng) -> ark_bn254::Fr {
-        let mut prng = ChaCha20Rng::seed_from_u64(rng.r#gen());
-        ark_bn254::Fr::rand(&mut prng)
-    }
-
     pub fn rnd_g2(rng: &mut impl Rng) -> ark_bn254::G2Projective {
-        ark_bn254::G2Projective::rand(rng) * rnd_fr(rng)
+        ark_bn254::G2Projective::rand(rng)
     }
 
     // Standardized input/output structures for G2 tests

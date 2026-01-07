@@ -624,7 +624,7 @@ mod tests {
     }
 
     pub fn rnd_g1(rng: &mut impl Rng) -> ark_bn254::G1Projective {
-        ark_bn254::G1Projective::rand(rng) * rnd_fr(rng)
+        ark_bn254::G1Projective::rand(rng)
     }
 
     // Standardized input/output structures for G1 tests
