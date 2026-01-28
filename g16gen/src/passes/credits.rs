@@ -14,7 +14,7 @@ use crate::modes::fanout_ctr::FanoutCounter;
 pub fn run_credits_pass(
     inputs: &Groth16VerifyCompressedInput,
     primary_input_count: usize,
-) -> (Vec<u16>, Vec<WireId>) {
+) -> (Vec<u32>, Vec<WireId>) {
     let (allocated_inputs, root_meta) = ComponentMetaBuilder::new_with_input(inputs);
     let mut metadata_mode = StreamingMode::<FanoutCounter>::MetadataPass(root_meta);
 
