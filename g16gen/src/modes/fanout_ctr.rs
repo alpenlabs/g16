@@ -7,7 +7,7 @@ use indicatif::ProgressBar;
 
 #[derive(Debug)]
 pub struct FanoutCounter {
-    fanout: Option<Vec<u16>>, // Original -> Normalized IDs
+    fanout: Option<Vec<u32>>, // Original -> Normalized IDs
     next_normalized_id: u64,
     primary_inputs: usize,
     biggest_fanout_seen: usize,
@@ -43,7 +43,7 @@ impl CircuitMode for FanoutCounter {
     fn evaluate_gate(&mut self, gate: &SourceGate) {
         self.spinner.inc(1);
 
-        let resize = |fanout: &mut Vec<u16>, max_wire_produced: usize| {
+        let resize = |fanout: &mut Vec<u32>, max_wire_produced: usize| {
             if max_wire_produced >= fanout.len() {
                 fanout.resize(max_wire_produced + 1, 0);
             }
@@ -188,18 +188,23 @@ impl FanoutCounter {
         id
     }
 
-    fn wire_used(&mut self, wire_id: WireId) -> u16 {
+    // fn top_n(mut v: Vec<u16>, n: usize) -> Vec<u16> {
+    //     v.sort_unstable_by(|a, b| b.cmp(a)); // descending
+    //     v.truncate(n);
+    //     v
+    // }
+
+    fn wire_used(&mut self, wire_id: WireId) -> u32 {
         let wire_id = wire_id.0;
         if (0..self.primary_inputs + 2).contains(&wire_id) {
             return 0;
         }
         let fanout = self.fanout.as_mut().unwrap();
-
         fanout[wire_id] += 1;
         fanout[wire_id]
     }
 
-    pub fn finish(&mut self) -> (Vec<u16>, usize) {
+    pub fn finish(&mut self) -> (Vec<u32>, usize) {
         let fanout = self.fanout.take().unwrap();
         (fanout, self.biggest_fanout_seen)
     }
