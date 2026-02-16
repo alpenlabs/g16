@@ -188,12 +188,6 @@ impl FanoutCounter {
         id
     }
 
-    // fn top_n(mut v: Vec<u16>, n: usize) -> Vec<u16> {
-    //     v.sort_unstable_by(|a, b| b.cmp(a)); // descending
-    //     v.truncate(n);
-    //     v
-    // }
-
     fn wire_used(&mut self, wire_id: WireId) -> u32 {
         let wire_id = wire_id.0;
         if (0..self.primary_inputs + 2).contains(&wire_id) {
