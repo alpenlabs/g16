@@ -1,33 +1,75 @@
+use std::str::FromStr;
+
 use g16ckt::{
-    Groth16VerifyInput,
-    ark::{self, AffineRepr, CircuitSpecificSetupSNARK, SNARK, UniformRand},
-    gadgets::groth16::Groth16VerifyCompressedInput,
+    ark::{CurveGroup, ark_serialize::CanonicalDeserialize},
+    gadgets::{
+        bigint::BigUint,
+        groth16::{Groth16VerifyCompressedRawInput, ProofType},
+        hash::blake3::InputMessage,
+    },
 };
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 
-use crate::dummy_circuit::DummyCircuit;
+pub fn generate_test_proof<const N: usize>() -> Groth16VerifyCompressedRawInput<N> {
+    let raw_public_input: [u8; N] = vec![
+        55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 55,
+        0, 0, 0, 89, 0, 0, 0,
+    ]
+    .try_into()
+    .unwrap();
 
-/// Generate a test proof and return compressed inputs for verification
-pub fn generate_test_proof(num_constraints: usize) -> Groth16VerifyCompressedInput {
-    let mut rng = ChaCha20Rng::seed_from_u64(12345);
-    let circuit = DummyCircuit::<ark::Fr> {
-        a: Some(ark::Fr::rand(&mut rng)),
-        b: Some(ark::Fr::rand(&mut rng)),
-        num_variables: 10,
-        num_constraints,
+    let proof_bytes: [u8; 128] = [
+        170, 12, 19, 111, 213, 193, 180, 194, 24, 97, 133, 134, 142, 65, 68, 80, 167, 234, 134,
+        227, 122, 69, 42, 179, 185, 45, 72, 68, 52, 31, 126, 55, 142, 161, 94, 118, 133, 222, 93,
+        107, 124, 105, 240, 163, 172, 101, 196, 1, 93, 161, 93, 136, 222, 36, 67, 217, 126, 98,
+        135, 154, 172, 13, 119, 39, 42, 176, 232, 63, 74, 70, 162, 89, 95, 2, 203, 110, 153, 130,
+        190, 30, 2, 169, 82, 97, 127, 41, 178, 126, 100, 122, 6, 163, 63, 123, 193, 142, 195, 12,
+        126, 179, 148, 173, 40, 196, 73, 211, 203, 24, 113, 50, 95, 124, 195, 7, 248, 1, 160, 57,
+        234, 184, 171, 0, 145, 121, 136, 61, 232, 165,
+    ];
+
+    let vk_bytes: [u8; 328] = [
+        226, 242, 109, 190, 162, 153, 245, 34, 59, 100, 108, 177, 251, 51, 234, 219, 5, 157, 148,
+        7, 85, 157, 116, 65, 223, 217, 2, 227, 167, 154, 77, 45, 171, 183, 61, 193, 127, 188, 19,
+        2, 30, 36, 113, 224, 192, 139, 214, 125, 132, 1, 245, 43, 115, 214, 208, 116, 131, 121, 76,
+        173, 71, 120, 24, 14, 12, 6, 243, 59, 188, 76, 121, 169, 202, 222, 242, 83, 166, 128, 132,
+        211, 130, 241, 119, 136, 248, 133, 201, 175, 209, 118, 247, 203, 47, 3, 103, 137, 237, 246,
+        146, 217, 92, 189, 222, 70, 221, 218, 94, 247, 212, 34, 67, 103, 121, 68, 92, 94, 102, 0,
+        106, 66, 118, 30, 31, 18, 239, 222, 0, 24, 194, 18, 243, 174, 183, 133, 228, 151, 18, 231,
+        169, 53, 51, 73, 170, 241, 37, 93, 251, 49, 183, 191, 96, 114, 58, 72, 13, 146, 147, 147,
+        142, 25, 237, 34, 1, 251, 191, 54, 215, 39, 179, 99, 122, 119, 118, 59, 61, 248, 184, 228,
+        40, 77, 53, 39, 175, 44, 254, 55, 12, 186, 244, 65, 255, 3, 230, 116, 95, 132, 105, 130,
+        153, 33, 69, 2, 32, 192, 12, 94, 134, 224, 54, 210, 70, 155, 204, 30, 240, 33, 95, 103, 21,
+        231, 141, 203, 199, 156, 3, 0, 0, 0, 0, 0, 0, 0, 142, 117, 169, 138, 181, 40, 29, 69, 76,
+        115, 219, 51, 146, 119, 36, 245, 235, 67, 55, 205, 148, 166, 160, 78, 138, 173, 176, 175,
+        28, 30, 9, 38, 76, 251, 81, 137, 196, 193, 55, 229, 85, 135, 135, 236, 198, 54, 237, 80,
+        167, 204, 144, 208, 39, 194, 7, 38, 93, 162, 61, 253, 208, 63, 28, 6, 28, 231, 41, 209, 79,
+        99, 32, 224, 222, 40, 96, 161, 81, 236, 253, 79, 236, 178, 208, 234, 226, 224, 224, 127,
+        129, 121, 138, 56, 65, 178, 234, 4,
+    ];
+    let mut vk: ark_groth16::VerifyingKey<ark_bn254::Bn254> =
+        ark_groth16::VerifyingKey::deserialize_compressed_unchecked(&vk_bytes[..]).unwrap();
+    const SP1_VKEY_HASH: &str =
+        "71453366410619949346755464650355874340577815840172820125756847035126066871";
+    let sp1_vkey_hash = BigUint::from_str(SP1_VKEY_HASH).unwrap();
+    let sp1_vkey_hash: ark_bn254::Fr = sp1_vkey_hash.into();
+    let sp1_vk_gamma = vk.gamma_abc_g1[0] + vk.gamma_abc_g1[1] * sp1_vkey_hash;
+    vk.gamma_abc_g1[0] = sp1_vk_gamma.into_affine();
+    let _ = vk.gamma_abc_g1.remove(1);
+
+    let gnark_proof_bits: Vec<bool> = {
+        let gnark_proof_bits: Vec<bool> = proof_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+        gnark_proof_bits
     };
 
-    let (pk, vk) = ark::Groth16::<ark::Bn254>::setup(circuit, &mut rng).expect("setup failed");
-    let c_val = circuit.a.unwrap() * circuit.b.unwrap();
-    let proof = ark::Groth16::<ark::Bn254>::prove(&pk, circuit, &mut rng).expect("prove failed");
-
-    Groth16VerifyInput {
-        public: vec![c_val],
-        a: proof.a.into_group(),
-        b: proof.b.into_group(),
-        c: proof.c.into_group(),
-        vk: vk.clone(),
+    Groth16VerifyCompressedRawInput {
+        public: InputMessage {
+            byte_arr: raw_public_input,
+        },
+        proof: gnark_proof_bits.try_into().unwrap(),
+        vk,
+        proof_type: ProofType::GNARK,
     }
-    .compress()
 }

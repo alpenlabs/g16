@@ -3,16 +3,17 @@ use std::time::Instant;
 use g16ckt::{
     WireId,
     circuit::{StreamingMode, component_meta::ComponentMetaBuilder},
-    gadgets::groth16::Groth16VerifyCompressedInput,
-    groth16_verify_compressed,
+    gadgets::groth16::{
+        Groth16VerifyCompressedRawInput, groth16_verify_compressed_over_raw_public_input,
+    },
 };
 use tracing::info;
 
 use crate::modes::fanout_ctr::FanoutCounter;
 
 /// Run the credits pass to compute wire credits
-pub fn run_credits_pass(
-    inputs: &Groth16VerifyCompressedInput,
+pub fn run_credits_pass<const N: usize>(
+    inputs: &Groth16VerifyCompressedRawInput<N>,
     primary_input_count: usize,
 ) -> (Vec<u16>, Vec<WireId>) {
     let (allocated_inputs, root_meta) = ComponentMetaBuilder::new_with_input(inputs);
@@ -21,7 +22,8 @@ pub fn run_credits_pass(
     let metadata_start = Instant::now();
     // Run circuit construction in metadata mode
     let meta_output_wires = {
-        let ok = groth16_verify_compressed(&mut metadata_mode, &allocated_inputs);
+        let ok =
+            groth16_verify_compressed_over_raw_public_input(&mut metadata_mode, &allocated_inputs);
         vec![ok]
     };
     let metadata_time = metadata_start.elapsed();
@@ -37,7 +39,7 @@ pub fn run_credits_pass(
     let credits_start = Instant::now();
     // Run the credits pass
     let real_output_wires = {
-        let ok = groth16_verify_compressed(&mut ctx, &allocated_inputs);
+        let ok = groth16_verify_compressed_over_raw_public_input(&mut ctx, &allocated_inputs);
         vec![ok]
     };
     println!("Output wires: {:?}", real_output_wires);

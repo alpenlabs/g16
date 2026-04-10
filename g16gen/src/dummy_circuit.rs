@@ -1,5 +1,6 @@
 use g16ckt::ark::{self, ConstraintSystemRef, PrimeField, SynthesisError};
 
+#[allow(dead_code)]
 /// Circuit for generating test proofs
 #[derive(Copy, Clone)]
 pub struct DummyCircuit<F: PrimeField> {
