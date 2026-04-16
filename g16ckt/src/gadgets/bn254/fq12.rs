@@ -68,7 +68,7 @@ impl Fq12 {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.len() == 0
     }
 
     pub fn new_constant(v: ark_bn254::Fq12) -> Fq12 {
