@@ -35,13 +35,17 @@ impl WiresObject for Fq6 {
 
 impl FromWires for Fq6 {
     fn from_wires(wires: &[WireId]) -> Option<Self> {
-        let len = wires.len() / 3;
-        let mut chunks = wires.chunks(len);
-        Some(Self([
-            Fq2::from_wires(chunks.next()?)?,
-            Fq2::from_wires(chunks.next()?)?,
-            Fq2::from_wires(chunks.next()?)?,
-        ]))
+        if wires.len() == Fq6::N_BITS {
+            let len = wires.len() / 3;
+            let mut chunks = wires.chunks(len);
+            Some(Self([
+                Fq2::from_wires(chunks.next()?)?,
+                Fq2::from_wires(chunks.next()?)?,
+                Fq2::from_wires(chunks.next()?)?,
+            ]))
+        } else {
+            None
+        }
     }
 }
 

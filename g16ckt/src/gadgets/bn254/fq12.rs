@@ -35,7 +35,7 @@ impl WiresObject for Fq12 {
 
 impl FromWires for Fq12 {
     fn from_wires(wires: &[WireId]) -> Option<Self> {
-        if wires.len() >= 1524 {
+        if wires.len() == Fq12::N_BITS {
             // 2 * 3 * 2 * 254 = 3048/2 = 1524 wires per Fq6
             let mid = wires.len() / 2;
             let fq6_1 = Fq6::from_wires(&wires[..mid])?;

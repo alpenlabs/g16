@@ -344,9 +344,13 @@ fn g2_line_coeffs_add<C: CircuitContext>(
 
 impl FromWires for (G2Projective, Fq6) {
     fn from_wires(wires: &[crate::WireId]) -> Option<Self> {
-        let (g2, fq6) = wires.split_at(G2Projective::ARITY);
+        if wires.len() == G2Projective::N_BITS + Fq6::N_BITS {
+            let (g2, fq6) = wires.split_at(G2Projective::ARITY);
 
-        Some((G2Projective::from_wires(g2)?, Fq6::from_wires(fq6)?))
+            Some((G2Projective::from_wires(g2)?, Fq6::from_wires(fq6)?))
+        } else {
+            None
+        }
     }
 }
 

@@ -54,9 +54,13 @@ impl WiresObject for Fr {
 
 impl crate::circuit::FromWires for Fr {
     fn from_wires(wires: &[WireId]) -> Option<Self> {
-        Some(Self(crate::gadgets::bigint::BigIntWires::from_bits(
-            wires.iter().copied(),
-        )))
+        if wires.len() == Fr::N_BITS {
+            Some(Self(crate::gadgets::bigint::BigIntWires::from_bits(
+                wires.iter().copied(),
+            )))
+        } else {
+            None
+        }
     }
 }
 

@@ -43,13 +43,17 @@ impl WiresObject for G2Projective {
 
 impl FromWires for G2Projective {
     fn from_wires(wires: &[WireId]) -> Option<Self> {
-        let len = wires.len() / 3;
-        let mut chunks = wires.chunks(len);
-        Some(Self {
-            x: Fq2::from_wires(chunks.next()?)?,
-            y: Fq2::from_wires(chunks.next()?)?,
-            z: Fq2::from_wires(chunks.next()?)?,
-        })
+        if wires.len() == G2Projective::N_BITS {
+            let len = wires.len() / 3;
+            let mut chunks = wires.chunks(len);
+            Some(Self {
+                x: Fq2::from_wires(chunks.next()?)?,
+                y: Fq2::from_wires(chunks.next()?)?,
+                z: Fq2::from_wires(chunks.next()?)?,
+            })
+        } else {
+            None
+        }
     }
 }
 

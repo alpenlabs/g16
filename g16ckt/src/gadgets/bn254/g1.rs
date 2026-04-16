@@ -43,13 +43,17 @@ impl WiresObject for G1Projective {
 
 impl FromWires for G1Projective {
     fn from_wires(wires: &[WireId]) -> Option<Self> {
-        let len = wires.len() / 3;
-        let mut chunks = wires.chunks(len);
-        Some(Self {
-            x: Fq::from_wires(chunks.next()?)?,
-            y: Fq::from_wires(chunks.next()?)?,
-            z: Fq::from_wires(chunks.next()?)?,
-        })
+        if wires.len() == G1Projective::N_BITS {
+            let len = wires.len() / 3;
+            let mut chunks = wires.chunks(len);
+            Some(Self {
+                x: Fq::from_wires(chunks.next()?)?,
+                y: Fq::from_wires(chunks.next()?)?,
+                z: Fq::from_wires(chunks.next()?)?,
+            })
+        } else {
+            None
+        }
     }
 }
 
