@@ -297,6 +297,15 @@ impl Fq {
             &BigUint::from_str(Self::MODULUS_ADD_1_DIV_4).unwrap(),
         )
     }
+
+    /// Return a>b in standard form given inputs in montgomery form
+    pub fn greater_than<C: CircuitContext>(circuit: &mut C, a: &Fq, b: &Fq) -> WireId {
+        // First convert the inputs 'a' and 'b' back to standard form
+        let a = Fq::mul_by_constant_montgomery(circuit, a, &ark_bn254::Fq::ONE);
+        let b = Fq::mul_by_constant_montgomery(circuit, b, &ark_bn254::Fq::ONE);
+        // only now perform comparison
+        bigint::greater_than(circuit, &a, &b)
+    }
 }
 
 #[cfg(test)]
@@ -304,7 +313,8 @@ pub(super) mod tests {
     use std::{array, iter};
 
     use ark_ff::AdditiveGroup;
-    use rand::Rng;
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
     use test_log::test;
     use tracing::trace;
 
@@ -678,6 +688,29 @@ pub(super) mod tests {
             });
 
         assert_eq!(result.output_value.value, expected_c);
+    }
+
+    #[test]
+    fn test_fq_sqrt_montgomery_roundtrip() {
+        let mut rng = ChaCha20Rng::seed_from_u64(42);
+        for _ in 0..5 {
+            let aa_v = Fq::random(&mut rng);
+            let sqrt_exists = aa_v.sqrt().is_some();
+
+            let aa_montgomery = Fq::as_montgomery(aa_v);
+            let input = FqInput::new([aa_montgomery]);
+
+            let result =
+                CircuitBuilder::streaming_execute::<_, _, FqOutput>(input, 10_000, |ctx, input| {
+                    let [aa_wire] = input;
+                    let sqrt = Fq::sqrt_montgomery(ctx, aa_wire);
+                    Fq::square_montgomery(ctx, &sqrt)
+                });
+
+            let calc_aa_montgomery = result.output_value.value;
+
+            assert_eq!(sqrt_exists, calc_aa_montgomery == aa_montgomery);
+        }
     }
 
     #[test]

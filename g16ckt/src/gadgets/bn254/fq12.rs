@@ -5,7 +5,7 @@ use rand::Rng;
 use super::fq6::Fq6Components;
 use crate::{
     CircuitContext, Gate, WireId,
-    circuit::{FromWires, WiresObject},
+    circuit::{FromWires, WiresArity, WiresObject},
     gadgets::bn254::{fq::Fq, fq2::Fq2, fq6::Fq6},
 };
 
@@ -445,6 +445,58 @@ impl Fq12 {
         let new_c1 = Fq6::neg(circuit, a.c1().clone());
         Fq12::from_components(a.c0().clone(), new_c1)
     }
+}
+
+/// Analogous to Option<Fq12> where `is_valid` carries `false` if variable is None
+#[derive(Clone, Debug)]
+pub struct ValidFq12 {
+    pub f: Fq12,
+    pub is_valid: WireId,
+}
+
+impl WiresObject for ValidFq12 {
+    fn to_wires_vec(&self) -> Vec<WireId> {
+        let mut wires: Vec<WireId> = self.f.0[0]
+            .to_wires_vec()
+            .into_iter()
+            .chain(self.f.0[1].to_wires_vec())
+            .collect();
+        wires.push(self.is_valid);
+        wires
+    }
+
+    fn clone_from(&self, mut wire_gen: &mut impl FnMut() -> WireId) -> Self {
+        ValidFq12 {
+            f: Fq12([
+                self.f.0[0].clone_from(&mut wire_gen),
+                self.f.0[1].clone_from(&mut wire_gen),
+            ]),
+            is_valid: wire_gen(),
+        }
+    }
+}
+
+impl FromWires for ValidFq12 {
+    fn from_wires(wires: &[WireId]) -> Option<Self> {
+        if wires.len() == ValidFq12::ARITY {
+            let mid = Fq6::N_BITS;
+            let fq6_1 = Fq6::from_wires(&wires[..mid])?;
+            let fq6_2 = Fq6::from_wires(&wires[mid..2 * mid])?;
+            let is_valid_wires = &wires[2 * mid..];
+            assert_eq!(is_valid_wires.len(), 1); // single is valid wire
+            let res = ValidFq12 {
+                f: Fq12([fq6_1, fq6_2]),
+                is_valid: is_valid_wires[0],
+            };
+            Some(res)
+        } else {
+            None
+        }
+    }
+}
+
+impl WiresArity for ValidFq12 {
+    const ARITY: usize = Fq12::N_BITS + 1;
 }
 
 #[cfg(test)]
