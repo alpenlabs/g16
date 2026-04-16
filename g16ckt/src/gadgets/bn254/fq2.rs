@@ -305,6 +305,10 @@ impl Fq2 {
         Fq2::from_components(c0, c1)
     }
 
+    /// Montgomery multiplication by constant for circuit wires
+    /// # Arguments
+    /// * `a` - Fq2 Constant in standard form
+    /// * `b` - Fq in Montgomery form
     #[component(offcircuit_args = "a")]
     pub fn mul_constant_by_fq_montgomery<C: CircuitContext>(
         circuit: &mut C,
