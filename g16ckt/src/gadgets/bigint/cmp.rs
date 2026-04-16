@@ -90,7 +90,7 @@ pub fn equal_zero<C: CircuitContext>(circuit: &mut C, a: &BigIntWires) -> WireId
         let is_bit_zero = circuit.issue_wire();
 
         //this xor might be negated with innate NOT maintenance
-        circuit.add_gate(Gate::not_with_xor(a.get(0).unwrap(), is_bit_zero));
+        circuit.add_gate(Gate::not(a.get(0).unwrap(), is_bit_zero));
 
         return is_bit_zero;
     }
@@ -118,7 +118,7 @@ pub fn greater_than<C: CircuitContext>(
             .map(|b_i| {
                 let w = circuit.issue_wire();
                 //this xor might be negated with innate NOT maintenance
-                circuit.add_gate(Gate::not_with_xor(*b_i, w));
+                circuit.add_gate(Gate::not(*b_i, w));
                 w
             })
             .collect(),
@@ -140,7 +140,7 @@ pub fn less_than_constant<C: CircuitContext>(
             .map(|a_i| {
                 let w = circuit.issue_wire();
                 //this xor might be negated with innate NOT maintenance
-                circuit.add_gate(Gate::not_with_xor(*a_i, w));
+                circuit.add_gate(Gate::not(*a_i, w));
                 w
             })
             .collect(),

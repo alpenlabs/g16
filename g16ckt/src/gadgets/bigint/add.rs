@@ -57,7 +57,7 @@ pub fn add_constant<C: CircuitContext>(
             bits.push(a_i);
         } else if i == first_one {
             let wire = circuit.issue_wire();
-            circuit.add_gate(Gate::not_with_xor(a_i, wire)); //This must be necessary, since the bit is duplicated
+            circuit.add_gate(Gate::not(a_i, wire)); //This must be necessary, since the bit is duplicated
             bits.push(wire);
             carry = Some(a_i);
         } else if b_bits[i] {

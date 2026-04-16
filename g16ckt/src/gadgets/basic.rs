@@ -117,11 +117,12 @@ mod tests {
             [true],
             10_000,
             |circuit, wire| {
-                let [mut wire] = *wire;
-                circuit.add_gate(Gate::not(&mut wire));
-                circuit.add_gate(Gate::not(&mut wire));
-
-                vec![wire]
+                let [wire] = *wire;
+                let wire_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(wire, wire_not));
+                let wire_not_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(wire_not, wire_not_not));
+                vec![wire_not_not]
             },
         )
         .output_value[0];
@@ -131,12 +132,14 @@ mod tests {
             [true],
             10_000,
             |circuit, wire| {
-                let [mut wire] = *wire;
-                circuit.add_gate(Gate::not(&mut wire));
-                circuit.add_gate(Gate::not(&mut wire));
-                circuit.add_gate(Gate::not(&mut wire));
-
-                vec![wire]
+                let [wire] = *wire;
+                let wire_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(wire, wire_not));
+                let wire_not_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(wire_not, wire_not_not));
+                let wire_not_not_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(wire_not_not, wire_not_not_not));
+                vec![wire_not_not_not]
             },
         )
         .output_value[0];
@@ -150,13 +153,17 @@ mod tests {
             [true, true],
             10_000,
             |circuit, wires| {
-                let [mut a_wire, mut b_wire] = *wires;
+                let [a_wire, b_wire] = *wires;
 
-                circuit.add_gate(Gate::not(&mut a_wire));
-                circuit.add_gate(Gate::not(&mut a_wire));
+                let a_wire_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(a_wire, a_wire_not));
+                let a_wire_not2 = circuit.issue_wire();
+                circuit.add_gate(Gate::not(a_wire_not, a_wire_not2));
 
-                circuit.add_gate(Gate::not(&mut b_wire));
-                circuit.add_gate(Gate::not(&mut b_wire));
+                let b_wire_not = circuit.issue_wire();
+                circuit.add_gate(Gate::not(b_wire, b_wire_not));
+                let b_wire_not2 = circuit.issue_wire();
+                circuit.add_gate(Gate::not(b_wire_not, b_wire_not2));
 
                 let res = circuit.issue_wire();
                 circuit.add_gate(Gate::and(a_wire, b_wire, res));

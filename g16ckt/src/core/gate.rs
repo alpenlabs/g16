@@ -133,18 +133,7 @@ impl Gate {
     }
 
     #[must_use]
-    pub fn not(wire_a: &mut WireId) -> Self {
-        let wire_a = *wire_a;
-        Self {
-            wire_a,
-            wire_b: wire_a,
-            wire_c: wire_a,
-            gate_type: GateType::Not,
-        }
-    }
-
-    #[must_use]
-    pub fn not_with_xor(wire_a: WireId, wire_c: WireId) -> Self {
+    pub fn not(wire_a: WireId, wire_c: WireId) -> Self {
         Self {
             wire_a,
             wire_b: TRUE_WIRE,
