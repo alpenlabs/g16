@@ -15,6 +15,10 @@ use crate::{
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
+///
+/// /// Note: Use of bn254 base field (ark_bn254::Fq) specific functions to default trait implementation makes this trait
+/// not directly applicable to field elements of a different modulus (say ark_bn254::Fr)
+/// Therefore do not use this trait to implement anything other than Fq
 pub trait Fp254Impl {
     /// The prime modulus for the field
     const MODULUS: &'static str;

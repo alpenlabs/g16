@@ -12,13 +12,12 @@ use std::ops::{Deref, DerefMut};
 use ark_ff::PrimeField;
 use num_bigint::BigUint;
 
-use super::super::bn254::fp254impl::Fp254Impl;
 use crate::{
     CircuitContext, WireId,
     circuit::WiresObject,
     gadgets::{
         self,
-        bigint::{self, BigIntWires, Error},
+        bigint::{BigIntWires, Error},
     },
 };
 
@@ -61,28 +60,9 @@ impl crate::circuit::FromWires for Fr {
     }
 }
 
-impl Fp254Impl for Fr {
-    const MODULUS: &'static str =
-        "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-    const MONTGOMERY_M_INVERSE: &'static str =
-        "5441563794177615591428663161977496376097281981129373443346157590346630955009";
-    const MONTGOMERY_R_INVERSE: &'static str =
-        "17773755579518009376303681366703133516854333631346829854655645366227550102839";
-    const N_BITS: usize = 254;
-
-    fn half_modulus() -> BigUint {
-        BigUint::from(ark_bn254::Fr::from(1) / ark_bn254::Fr::from(2))
-    }
-
-    fn one_third_modulus() -> BigUint {
-        BigUint::from(ark_bn254::Fr::from(1) / ark_bn254::Fr::from(3))
-    }
-    fn two_third_modulus() -> BigUint {
-        BigUint::from(ark_bn254::Fr::from(2) / ark_bn254::Fr::from(3))
-    }
-}
-
 impl Fr {
+    pub const N_BITS: usize = 254;
+
     /// Create constant field element wires from a known value
     ///
     /// # Arguments
@@ -127,31 +107,6 @@ impl Fr {
         wires.0.to_bitmask(&get_val)
     }
 
-    /// Convert a field element to Montgomery form
-    ///
-    /// Montgomery form represents a field element `a` as `a * R mod p` where R = 2^254.
-    /// This form enables efficient modular multiplication using Montgomery reduction.
-    ///
-    /// # Arguments
-    /// * `a` - Field element in standard form
-    ///
-    /// # Returns
-    /// Field element in Montgomery form (a * R mod p)
-    pub fn as_montgomery(a: ark_bn254::Fr) -> ark_bn254::Fr {
-        a * ark_bn254::Fr::from(Self::montgomery_r_as_biguint())
-    }
-
-    /// Convert a field element from Montgomery form back to standard form
-    ///
-    /// # Arguments
-    /// * `a` - Field element in Montgomery form
-    ///
-    /// # Returns
-    /// Field element in standard form (a / R mod p)
-    pub fn from_montgomery(a: ark_bn254::Fr) -> ark_bn254::Fr {
-        a / ark_bn254::Fr::from(Self::montgomery_r_as_biguint())
-    }
-
     pub fn to_bits(u: ark_bn254::Fr) -> Vec<bool> {
         let mut bytes = BigUint::from(u).to_bytes_le();
         bytes.extend(vec![0_u8; 32 - bytes.len()]);
@@ -174,107 +129,6 @@ impl Fr {
             u = u.clone() + u.clone() + if *bit { one.clone() } else { zero.clone() };
         }
         ark_bn254::Fr::from(u)
-    }
-
-    // Field arithmetic methods (directly using Fp254Impl trait methods)
-    pub fn add(circuit: &mut impl crate::CircuitContext, a: &Fr, b: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::add(circuit, &a.0, &b.0))
-    }
-
-    pub fn add_constant(circuit: &mut impl crate::CircuitContext, a: &Fr, b: &ark_bn254::Fr) -> Fr {
-        Fr(bigint::add_constant(
-            circuit,
-            &a.0,
-            &BigUint::from(b.into_bigint()),
-        ))
-    }
-
-    pub fn sub(circuit: &mut impl crate::CircuitContext, a: &Fr, b: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::sub(circuit, &a.0, &b.0))
-    }
-
-    pub fn neg(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::neg(circuit, &a.0))
-    }
-
-    pub fn double(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::double(circuit, &a.0))
-    }
-
-    pub fn half(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::half(circuit, &a.0))
-    }
-
-    pub fn triple(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::triple(circuit, &a.0))
-    }
-
-    pub fn div6(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::div6(circuit, &a.0))
-    }
-
-    pub fn inverse(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::inverse(circuit, &a.0))
-    }
-
-    pub fn mul_montgomery(circuit: &mut impl crate::CircuitContext, a: &Fr, b: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::mul_montgomery(circuit, &a.0, &b.0))
-    }
-
-    pub fn mul_by_constant_montgomery(
-        circuit: &mut impl crate::CircuitContext,
-        a: &Fr,
-        b: &ark_bn254::Fr,
-    ) -> Fr {
-        let b_mont = Self::as_montgomery(*b);
-        let b_wires =
-            BigIntWires::new_constant(Self::N_BITS, &BigUint::from(b_mont.into_bigint())).unwrap();
-        Fr(<Self as Fp254Impl>::mul_montgomery(circuit, &a.0, &b_wires))
-    }
-
-    pub fn square_montgomery(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::square_montgomery(circuit, &a.0))
-    }
-
-    pub fn montgomery_reduce(circuit: &mut impl crate::CircuitContext, x: &BigIntWires) -> Fr {
-        Fr(<Self as Fp254Impl>::montgomery_reduce(circuit, x))
-    }
-
-    pub fn inverse_montgomery(circuit: &mut impl crate::CircuitContext, a: &Fr) -> Fr {
-        Fr(<Self as Fp254Impl>::inverse_montgomery(circuit, &a.0))
-    }
-
-    pub fn exp_by_constant_montgomery(
-        circuit: &mut impl crate::CircuitContext,
-        a: &Fr,
-        exp: &BigUint,
-    ) -> Fr {
-        Fr(<Self as Fp254Impl>::exp_by_constant_montgomery(
-            circuit, &a.0, exp,
-        ))
-    }
-
-    pub fn multiplexer(
-        circuit: &mut impl crate::CircuitContext,
-        a: &[Fr],
-        s: &[WireId],
-        w: usize,
-    ) -> Fr {
-        let bigint_array: Vec<BigIntWires> = a.iter().map(|fr| fr.0.clone()).collect();
-        Fr(<Self as Fp254Impl>::multiplexer(
-            circuit,
-            &bigint_array,
-            s,
-            w,
-        ))
-    }
-
-    pub fn equal_constant(
-        circuit: &mut impl crate::CircuitContext,
-        a: &Fr,
-        b: &ark_bn254::Fr,
-    ) -> WireId {
-        bigint::equal_constant(circuit, &a.0, &BigUint::from(b.into_bigint()))
     }
 }
 
