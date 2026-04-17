@@ -681,33 +681,6 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn test_exp_by_constant_montgomery() {
-        let a_v = rnd();
-
-        // test for random input
-        let k = rnd().into_bigint();
-        let expected_c = a_v.pow(k);
-        let input = FqInput::new([Fq::as_montgomery(a_v)]);
-        let result =
-            CircuitBuilder::streaming_execute::<_, _, FqOutput>(input, 10_000, |ctx, input| {
-                let [aa_wire] = input;
-                Fq::exp_by_constant_montgomery(ctx, aa_wire, &k.into())
-            });
-        assert_eq!(result.output_value.value, Fq::as_montgomery(expected_c));
-
-        // test for zero exponent
-        let k: ark_ff::BigInt<4> = ark_ff::BigInt::zero();
-        let expected_c = a_v.pow(k);
-        let input = FqInput::new([Fq::as_montgomery(a_v)]);
-        let result =
-            CircuitBuilder::streaming_execute::<_, _, FqOutput>(input, 10_000, |ctx, input| {
-                let [aa_wire] = input;
-                Fq::exp_by_constant_montgomery(ctx, aa_wire, &k.into())
-            });
-        assert_eq!(result.output_value.value, Fq::as_montgomery(expected_c));
-    }
-
-    #[test]
     fn test_fq_multiplexer() {
         let w = 1;
         let n = 2_usize.pow(w as u32);
@@ -777,5 +750,32 @@ pub(super) mod tests {
             });
 
         assert_eq!(result.output_value.value, expected);
+    }
+
+    #[test]
+    fn test_exp_by_constant_montgomery() {
+        let a_v = rnd();
+
+        // test for random input
+        let k = rnd().into_bigint();
+        let expected_c = a_v.pow(k);
+        let input = FqInput::new([Fq::as_montgomery(a_v)]);
+        let result =
+            CircuitBuilder::streaming_execute::<_, _, FqOutput>(input, 10_000, |ctx, input| {
+                let [aa_wire] = input;
+                Fq::exp_by_constant_montgomery(ctx, aa_wire, &k.into())
+            });
+        assert_eq!(result.output_value.value, Fq::as_montgomery(expected_c));
+
+        // test for zero exponent
+        let k: ark_ff::BigInt<4> = ark_ff::BigInt::zero();
+        let expected_c = a_v.pow(k);
+        let input = FqInput::new([Fq::as_montgomery(a_v)]);
+        let result =
+            CircuitBuilder::streaming_execute::<_, _, FqOutput>(input, 10_000, |ctx, input| {
+                let [aa_wire] = input;
+                Fq::exp_by_constant_montgomery(ctx, aa_wire, &k.into())
+            });
+        assert_eq!(result.output_value.value, Fq::as_montgomery(expected_c));
     }
 }
