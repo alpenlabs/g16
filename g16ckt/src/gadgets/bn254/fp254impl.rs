@@ -700,7 +700,11 @@ pub trait Fp254Impl {
         exp: &BigUint,
     ) -> BigIntWires {
         if exp.is_zero() {
-            return BigIntWires::new_constant(a.len(), &BigUint::one()).unwrap();
+            // a^0 => 1 and Mont(1) => ark::Fq(R)
+            let r = ark_bn254::Fq::from(Self::montgomery_r_as_biguint())
+                .into_bigint()
+                .into();
+            return BigIntWires::new_constant(Self::N_BITS, &r).unwrap();
         }
 
         if exp.is_one() {
