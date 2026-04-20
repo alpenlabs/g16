@@ -175,10 +175,7 @@ impl Fq12 {
     }
 
     pub fn neg<C: CircuitContext>(circuit: &mut C, a: &Fq12) -> Fq12 {
-        Fq12::from_components(
-            Fq6::neg(circuit, a.0[0].clone()),
-            Fq6::neg(circuit, a.0[1].clone()),
-        )
+        Fq12::from_components(Fq6::neg(circuit, &a.0[0]), Fq6::neg(circuit, &a.0[1]))
     }
 
     pub fn sub<C: CircuitContext>(circuit: &mut C, a: &Fq12, b: &Fq12) -> Fq12 {
@@ -421,7 +418,7 @@ impl Fq12 {
         let inverse_norm = Fq6::inverse_montgomery(circuit, &norm);
 
         let res_c0 = Fq6::mul_montgomery(circuit, a.c0(), &inverse_norm);
-        let neg_a_c1 = Fq6::neg(circuit, a.c1().clone());
+        let neg_a_c1 = Fq6::neg(circuit, a.c1());
         let res_c1 = Fq6::mul_montgomery(circuit, &inverse_norm, &neg_a_c1);
 
         Fq12::from_components(res_c0, res_c1)
@@ -442,7 +439,7 @@ impl Fq12 {
     }
 
     pub fn conjugate<C: CircuitContext>(circuit: &mut C, a: &Fq12) -> Fq12 {
-        let new_c1 = Fq6::neg(circuit, a.c1().clone());
+        let new_c1 = Fq6::neg(circuit, a.c1());
         Fq12::from_components(a.c0().clone(), new_c1)
     }
 }

@@ -163,11 +163,11 @@ impl Fq6 {
         )
     }
 
-    pub fn neg<C: CircuitContext>(circuit: &mut C, a: Fq6) -> Fq6 {
+    pub fn neg<C: CircuitContext>(circuit: &mut C, a: &Fq6) -> Fq6 {
         Fq6::from_components(
-            Fq2::neg(circuit, a.0[0].clone()),
-            Fq2::neg(circuit, a.0[1].clone()),
-            Fq2::neg(circuit, a.0[2].clone()),
+            Fq2::neg(circuit, &a.0[0]),
+            Fq2::neg(circuit, &a.0[1]),
+            Fq2::neg(circuit, &a.0[2]),
         )
     }
 
@@ -722,7 +722,7 @@ mod tests {
         let result =
             CircuitBuilder::streaming_execute::<_, _, Fq6Output>(input, 10_000, |ctx, input| {
                 let [a] = input;
-                Fq6::neg(ctx, a.clone())
+                Fq6::neg(ctx, a)
             });
         assert_eq!(result.output_value.value, expected);
     }
