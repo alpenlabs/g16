@@ -738,7 +738,7 @@ impl WiresArity for DecompressedG2Wires {
 #[cfg(test)]
 mod tests {
     use ark_ff::UniformRand;
-    use rand::{Rng, SeedableRng, thread_rng};
+    use rand::{Rng, thread_rng};
 
     use super::*;
     use crate::{
@@ -800,12 +800,6 @@ mod tests {
         }
     }
 
-    fn rnd() -> ark_bn254::G2Projective {
-        use ark_ec::PrimeGroup;
-        let g2 = ark_bn254::G2Projective::generator();
-        g2.mul_bigint(<rand::rngs::StdRng as SeedableRng>::seed_from_u64(1).r#gen::<[u64; 4]>())
-    }
-
     #[test]
     fn test_g2p_add_montgomery() {
         // Generate random G2 points
@@ -839,7 +833,8 @@ mod tests {
     #[test]
     fn test_g2p_double_montgomery() {
         // Generate random G2 point
-        let a = rnd();
+        let mut rng = thread_rng();
+        let a = rnd_g2(&mut rng);
         let c = a + a;
 
         // Convert to Montgomery form
@@ -861,10 +856,9 @@ mod tests {
     fn test_double_in_place() {
         use ark_ec::CurveGroup;
 
-        let mut rng = ChaCha20Rng::seed_from_u64(42);
-
         // a is in Jacobian
-        let a = ark_bn254::G2Projective::rand(&mut rng);
+        let mut rng = thread_rng();
+        let a = rnd_g2(&mut rng);
 
         // Jacobian doubling via library, then to affine
         let b_aff = (a + a).into_affine();

@@ -672,12 +672,6 @@ mod tests {
         }
     }
 
-    fn rnd() -> ark_bn254::G1Projective {
-        use ark_ec::PrimeGroup;
-        let g1 = ark_bn254::G1Projective::generator();
-        g1.mul_bigint(<rand::rngs::StdRng as SeedableRng>::seed_from_u64(1).r#gen::<[u64; 4]>())
-    }
-
     #[test]
     fn test_g1p_add_montgomery() {
         // Generate random G1 points
@@ -770,7 +764,8 @@ mod tests {
     #[test]
     fn test_g1p_double_montgomery() {
         // Generate random G1 points
-        let a = rnd();
+        let mut rng = thread_rng();
+        let a = rnd_g1(&mut rng);
         let c = a + a;
 
         // Convert to Montgomery form
