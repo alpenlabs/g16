@@ -526,7 +526,7 @@ impl G2Projective {
     pub fn neg<C: CircuitContext>(circuit: &mut C, p: &G2Projective) -> G2Projective {
         G2Projective {
             x: p.x.clone(),
-            y: Fq2::neg(circuit, p.y.clone()),
+            y: Fq2::neg(circuit, &p.y),
             z: p.z.clone(),
         }
     }
@@ -688,7 +688,7 @@ impl G2Projective {
         };
 
         // analogous to get_point_from_x_unchecked
-        let neg_y = Fq2::neg(circuit, y.clone());
+        let neg_y = Fq2::neg(circuit, &y);
         let y_neg_greater = Fq2::greater_than(circuit, &neg_y, &y);
         let tsy = {
             let tsy_c0 = bigint::select(circuit, y.c0(), neg_y.c0(), y_neg_greater);

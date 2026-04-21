@@ -255,7 +255,7 @@ fn g2_frobenius_map_affine<C: CircuitContext>(
             let y_f2 = Fq2::frobenius_montgomery(circuit, &y1, 1);
             let x2 = Fq2::mul_by_constant_montgomery(circuit, &x_f2, &Fq2::as_montgomery(cx));
             let mut y2 = Fq2::mul_by_constant_montgomery(circuit, &y_f2, &Fq2::as_montgomery(cy));
-            y2 = Fq2::neg(circuit, y2);
+            y2 = Fq2::neg(circuit, &y2);
             G2Projective {
                 x: x2,
                 y: y2,
@@ -293,7 +293,7 @@ fn g2_line_coeffs_double<C: CircuitContext>(
     let one_c0 = Fq::new_constant(&Fq::as_montgomery(ark_bn254::Fq::ONE)).expect("const one");
     let zero_c1 = Fq::new_constant(&Fq::as_montgomery(ark_bn254::Fq::ZERO)).expect("const zero");
     let c0 = Fq2::from_components(one_c0, zero_c1);
-    let c1 = Fq2::neg(circuit, lambda.clone());
+    let c1 = Fq2::neg(circuit, &lambda);
     let lambda_x = Fq2::mul_montgomery(circuit, &lambda, &x);
     let c2 = Fq2::sub(circuit, &lambda_x, &y);
 
@@ -331,7 +331,7 @@ fn g2_line_coeffs_add<C: CircuitContext>(
     let one_c0 = Fq::new_constant(&Fq::as_montgomery(ark_bn254::Fq::ONE)).expect("const one");
     let zero_c1 = Fq::new_constant(&Fq::as_montgomery(ark_bn254::Fq::ZERO)).expect("const zero");
     let c0 = Fq2::from_components(one_c0, zero_c1);
-    let c1 = Fq2::neg(circuit, lambda.clone());
+    let c1 = Fq2::neg(circuit, &lambda);
     let lambda_xr = Fq2::mul_montgomery(circuit, &lambda, &xr);
     let c2 = Fq2::sub(circuit, &lambda_xr, &yr);
 
@@ -406,7 +406,7 @@ pub fn double_in_place_circuit_montgomery<C: CircuitContext>(
     let gs = Fq2::square_montgomery(circuit, &g);
     let new_y = Fq2::sub(circuit, &gs, &es_triple);
     let new_z = Fq2::mul_montgomery(circuit, &b, &h);
-    let hn = Fq2::neg(circuit, h);
+    let hn = Fq2::neg(circuit, &h);
 
     (
         G2Projective {
@@ -450,7 +450,7 @@ pub fn add_in_place_montgomery(
     let wires_4 = Fq2::double(circuit, &g);
     let h = Fq2::sub(circuit, &wires_3, &wires_4);
 
-    let neg_theta = Fq2::neg(circuit, theta.clone());
+    let neg_theta = Fq2::neg(circuit, &theta);
 
     let wires_5 = Fq2::mul_montgomery(circuit, &theta, qx);
     let wires_6 = Fq2::mul_montgomery(circuit, &lambda, qy);
@@ -480,7 +480,7 @@ pub fn g2_affine_neg_evaluate<C: CircuitContext>(
     q: &G2Projective,
 ) -> G2Projective {
     let mut result = q.clone();
-    result.y = Fq2::neg(circuit, q.y.clone());
+    result.y = Fq2::neg(circuit, &q.y);
     result
 }
 
