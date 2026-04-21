@@ -1,6 +1,8 @@
 //! Binary Circuit Implementation of Blake3 Hash
 //! Supports input message of size less than or equals 1024 bytes only.
 //! This limited range is sufficient for usecases concerning garbled circuit inputs
+//! Implementation referenced from: https://github.com/BLAKE3-team/BLAKE3/blob/master/reference_impl/reference_impl.rs
+//! Test Vector referenced from: https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json
 
 use core::cmp::min;
 
@@ -469,8 +471,8 @@ impl Hasher {
         Self::new_internal(iv, zero)
     }
 
-    /// Add input to the hash state. This can be called any number of times.
-    pub(crate) fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[U8]) {
+    /// Add input to the hash state.
+    fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[U8]) {
         while !input.is_empty() {
             // Compress input bytes into the current chunk state.
             let want = CHUNK_LEN - self.chunk_state.len();
@@ -481,7 +483,7 @@ impl Hasher {
     }
 
     /// Finalize the hash and write any number of output bytes.
-    pub(crate) fn finalize<C: CircuitContext>(&self, circuit: &mut C, out_slice: &mut [U8]) {
+    fn finalize<C: CircuitContext>(&self, circuit: &mut C, out_slice: &mut [U8]) {
         let output = self.chunk_state.output(circuit);
         output.root_output_bytes(circuit, out_slice);
     }
