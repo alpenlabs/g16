@@ -77,4 +77,4 @@ jobs:
 
       - name: Run codespell
         run: |
-          codespell --skip="*.lock,./target" --ignore-words=.codespellignore
+          codespell --skip="*.lock,./target,blake3_test_vectors.json" --ignore-words=.codespellignore
