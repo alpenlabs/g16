@@ -165,8 +165,9 @@ impl G1Projective {
 
 impl G1Projective {
     // http://koclab.cs.ucsb.edu/teaching/ccs130h/2018/09projective.pdf
+    /// Caution: Use this function only if P != +- Q
     #[component]
-    pub fn add_montgomery<C: CircuitContext>(
+    pub(crate) fn add_montgomery<C: CircuitContext>(
         circuit: &mut C,
         p: &G1Projective,
         q: &G1Projective,
@@ -400,6 +401,9 @@ impl G1Projective {
             ));
         }
 
+        // given two bases M and N which were both known in compile time,
+        // user can not find non-zero scalars 'a' and 'b' that should give [a]M = [b]N
+        // The problem would be DLOG hard
         let mut acc = to_be_added[0].clone();
         for add in to_be_added.iter().skip(1) {
             let new_acc = Self::add_montgomery(circuit, &acc, add);

@@ -165,6 +165,8 @@ pub fn groth16_verify<C: CircuitContext>(
 
     // Add the constant term gamma_abc_g1[0] in Montgomery form
     let gamma0_m = G1Projective::as_montgomery(vk.gamma_abc_g1[0].into_group());
+    // gamma0_m is known in compile time, user can not find a value of `msm_temp` that's equal to `gamma0_m`
+    // The problem would be DLOG hard
     let msm =
         G1Projective::add_montgomery(circuit, &msm_temp, &G1Projective::new_constant(&gamma0_m));
 

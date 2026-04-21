@@ -213,6 +213,7 @@ impl G2Projective {
 
 impl G2Projective {
     // http://koclab.cs.ucsb.edu/teaching/ccs130h/2018/09projective.pdf
+    /// Caution: Use this function only if P != +- Q
     #[component]
     pub fn add_montgomery<C: CircuitContext>(
         circuit: &mut C,
