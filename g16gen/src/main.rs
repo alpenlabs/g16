@@ -1,4 +1,4 @@
-use g16ckt::{WireId, circuit::CircuitInput, gadgets::groth16::Groth16VerifyCompressedInput};
+use g16ckt::{WireId, circuit::CircuitInput, gadgets::groth16::Groth16VerifyCompressedRawInput};
 use tracing::info;
 
 mod cache;
@@ -78,10 +78,11 @@ fn print_help() {
 
 async fn run_generate(k: usize) {
     info!("Generating test proof with 2^{} constraints", k);
-    let inputs = generate_test_proof(1 << k);
+    const INPUT_MESSAGE_BYTES: usize = 36;
+    let inputs: Groth16VerifyCompressedRawInput<INPUT_MESSAGE_BYTES> = generate_test_proof();
 
     let input_wires = inputs.allocate(|| WireId(0)); // Dummy wire generator
-    let primary_input_count = Groth16VerifyCompressedInput::collect_wire_ids(&input_wires).len();
+    let primary_input_count = Groth16VerifyCompressedRawInput::collect_wire_ids(&input_wires).len();
     println!("Primary input count: {}", primary_input_count);
 
     // Try to load credits and output wires from cache, or compute them
@@ -109,10 +110,11 @@ async fn run_generate(k: usize) {
 
 async fn run_write_input_bits(k: usize) {
     info!("Generating test proof with 2^{} constraints", k);
-    let inputs = generate_test_proof(1 << k);
+    const INPUT_MESSAGE_BYTES: usize = 36;
+    let inputs: Groth16VerifyCompressedRawInput<INPUT_MESSAGE_BYTES> = generate_test_proof();
 
     let input_wires = inputs.allocate(|| WireId(0)); // Dummy wire generator
-    let primary_input_count = Groth16VerifyCompressedInput::collect_wire_ids(&input_wires).len();
+    let primary_input_count = Groth16VerifyCompressedRawInput::collect_wire_ids(&input_wires).len();
     println!("Primary input count: {}", primary_input_count);
 
     info!("Writing input bits to file...");

@@ -11,6 +11,7 @@ use crate::{
     gadgets::{
         bigint::{self, BigIntWires, Error},
         bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2},
+        groth16::ProofType,
     },
 };
 
@@ -493,8 +494,18 @@ impl G2Projective {
     pub fn deserialize_checked<C: CircuitContext>(
         circuit: &mut C,
         serialized_bits: [WireId; 64 * 8],
+        proof_type: ProofType,
     ) -> DecompressedG2Wires {
         let (x, is_x_valid, flag) = {
+            let mut byte_arr: Vec<[WireId; 8]> = serialized_bits
+                .chunks(8)
+                .map(|c| c.try_into().expect("chunk is exactly 8"))
+                .collect();
+            if proof_type == ProofType::GNARK {
+                byte_arr.reverse();
+            }
+            let serialized_bits: Vec<WireId> = byte_arr.into_iter().flatten().collect();
+
             let (num1, num2, flag) = (
                 &serialized_bits[0..Fq::N_BITS],
                 &serialized_bits[32 * 8..32 * 8 + Fq::N_BITS],
@@ -531,45 +542,83 @@ impl G2Projective {
         };
 
         // Part 1: Extract Flags
+        // const GNARK_MASK: u8 = 0b11 << 6;
+        // const GNARK_COMPRESSED_POSITIVE: u8 = 0b10 << 6;
+        // const GNARK_COMPRESSED_NEGATIVE: u8 = 0b11 << 6;
+        // const GNARK_COMPRESSED_INFINITY: u8 = 0b01 << 6;
+
+        // const ARK_MASK: u8 = 0b11 << 6;
+        // const ARK_COMPRESSED_POSITIVE: u8 = 0b00 << 6;
+        // const ARK_COMPRESSED_NEGATIVE: u8 = 0b10 << 6;
+        // const ARK_COMPRESSED_INFINITY: u8 = 0b01 << 6;
 
         let is_y_positive = {
-            // In arkworks, given:
-            // const Y_IS_POSITIVE: u8 = 0;
-            let flag_or = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag[0],
-                wire_b: flag[1],
-                wire_c: flag_or,
-                gate_type: crate::GateType::Or,
-            });
-            let flag_nor = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag_or,
-                wire_b: TRUE_WIRE,
-                wire_c: flag_nor,
-                gate_type: crate::GateType::Xor,
-            });
-            flag_nor
+            if proof_type == ProofType::ARK {
+                // 00
+                let flag_or = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[0],
+                    wire_b: flag[1],
+                    wire_c: flag_or,
+                    gate_type: crate::GateType::Or,
+                });
+                let flag_nor = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag_or,
+                    wire_b: TRUE_WIRE,
+                    wire_c: flag_nor,
+                    gate_type: crate::GateType::Xor,
+                });
+                flag_nor
+            } else {
+                // 10
+                let tmp0 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[0],
+                    wire_b: TRUE_WIRE,
+                    wire_c: tmp0,
+                    gate_type: crate::GateType::Xor,
+                });
+                let tmp1 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[1],
+                    wire_b: tmp0,
+                    wire_c: tmp1,
+                    gate_type: crate::GateType::And,
+                });
+                tmp1
+            }
         };
 
         let is_y_negative = {
-            // In arkworks, given:
-            // const Y_IS_NEGATIVE: u8 = 1 << 7;
-            let tmp0 = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag[0],
-                wire_b: TRUE_WIRE,
-                wire_c: tmp0,
-                gate_type: crate::GateType::Xor,
-            });
-            let tmp1 = circuit.issue_wire();
-            circuit.add_gate(crate::Gate {
-                wire_a: flag[1],
-                wire_b: tmp0,
-                wire_c: tmp1,
-                gate_type: crate::GateType::And,
-            });
-            tmp1
+            if proof_type == ProofType::ARK {
+                // 10
+                let tmp0 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[0],
+                    wire_b: TRUE_WIRE,
+                    wire_c: tmp0,
+                    gate_type: crate::GateType::Xor,
+                });
+                let tmp1 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[1],
+                    wire_b: tmp0,
+                    wire_c: tmp1,
+                    gate_type: crate::GateType::And,
+                });
+                tmp1
+            } else {
+                // 11
+                let tmp1 = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: flag[1],
+                    wire_b: flag[0],
+                    wire_c: tmp1,
+                    gate_type: crate::GateType::And,
+                });
+                tmp1
+            }
         };
 
         // rest of the flags (11 and 01) represent identity and None, so are invalid flags
@@ -738,8 +787,11 @@ impl WiresArity for DecompressedG2Wires {
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
     use ark_ff::UniformRand;
-    use rand::{Rng, thread_rng};
+    use ark_serialize::CanonicalSerialize;
+    use rand::{Rng, SeedableRng, thread_rng};
+    use rand_chacha::ChaCha20Rng;
 
     use super::*;
     use crate::{
@@ -978,5 +1030,140 @@ mod tests {
 
         let actual_result = G2Projective::from_bits_unchecked(result.output_value.clone());
         assert_eq!(actual_result, expected);
+    }
+
+    #[test]
+    fn test_g2_compress_decompress_matches() {
+        let mut rng = ChaCha20Rng::seed_from_u64(222);
+        let r = ark_bn254::Fr::rand(&mut rng);
+        let p = (ark_bn254::G2Projective::generator() * r).into_affine();
+
+        let mut p_bytes = Vec::new();
+        p.serialize_compressed(&mut p_bytes).unwrap();
+        let input: Vec<bool> = p_bytes
+            .iter()
+            .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+            .collect();
+        let input: [bool; 64 * 8] = input.try_into().unwrap();
+
+        let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(input, 20_000, |ctx, wires| {
+                let res = G2Projective::deserialize_checked(ctx, *wires, ProofType::ARK);
+                let dec = res.point;
+
+                let exp = G2Projective::as_montgomery(p.into());
+                let x_ok = Fq2::equal_constant(ctx, &dec.x, &exp.x);
+                let z_ok = Fq2::equal_constant(ctx, &dec.z, &exp.z);
+                // Compare y up to sign by checking y^2 equality
+                let y_sq = Fq2::square_montgomery(ctx, &dec.y);
+                let exp_y_std = Fq2::from_montgomery(exp.y);
+                let exp_y_sq_m = Fq2::as_montgomery(exp_y_std.square());
+                let y_ok = Fq2::equal_constant(ctx, &y_sq, &exp_y_sq_m);
+                vec![x_ok, y_ok, z_ok, res.is_valid]
+            });
+
+        assert!(out.output_value.iter().all(|&b| b));
+    }
+
+    #[test]
+    fn test_g2_decompress_failure() {
+        let mut rng = ChaCha20Rng::seed_from_u64(112);
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq2::rand(&mut rng);
+            let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq2::rand(&mut rng), false)
+            };
+            let pt = ark_bn254::G2Affine::new_unchecked(x, y);
+
+            let mut p_bytes = Vec::new();
+            pt.serialize_compressed(&mut p_bytes).unwrap();
+            let input: Vec<bool> = p_bytes
+                .iter()
+                .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
+                .collect();
+            let input: [bool; 64 * 8] = input.try_into().unwrap();
+
+            let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
+                CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
+                    let dec = G2Projective::deserialize_checked(ctx, *wires, ProofType::ARK);
+                    vec![dec.is_valid]
+                });
+            let calc_is_valid = out.output_value[0];
+
+            assert_eq!(calc_is_valid, ref_is_valid);
+            assert_eq!(calc_is_valid, pt.is_on_curve());
+        }
+    }
+
+    #[test]
+    fn test_g2_is_on_curve() {
+        let mut rng = ChaCha20Rng::seed_from_u64(111);
+        let r = ark_bn254::G2Projective::rand(&mut rng);
+        let ref_is_on_curve = r.into_affine().is_on_curve();
+        let input = G2Input {
+            points: [G2Projective::as_montgomery(r)],
+        };
+        let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
+                let is_on_curve = G2Projective::is_on_curve(ctx, &wires.points[0]);
+                vec![is_on_curve]
+            });
+        assert_eq!(out.output_value[0], ref_is_on_curve);
+
+        // not a point on curve
+        let r = ark_bn254::G2Projective::new_unchecked(
+            ark_bn254::Fq2::rand(&mut rng),
+            ark_bn254::Fq2::rand(&mut rng),
+            ark_bn254::Fq2::rand(&mut rng),
+        );
+        let input = G2Input {
+            points: [G2Projective::as_montgomery(r)],
+        };
+        let ref_is_on_curve = r.into_affine().is_on_curve();
+        let out: crate::circuit::StreamingResult<_, _, Vec<bool>> =
+            CircuitBuilder::streaming_execute(input, 10_000, |ctx, wires| {
+                let is_on_curve = G2Projective::is_on_curve(ctx, &wires.points[0]);
+                vec![is_on_curve]
+            });
+        assert_eq!(out.output_value[0], ref_is_on_curve);
+    }
+
+    #[test]
+    fn test_cofactor_clearing() {
+        let mut rng = ChaCha20Rng::seed_from_u64(112);
+        for _ in 0..5 {
+            // sufficient sample size to sample both valid and invalid points
+            let x = ark_bn254::Fq2::rand(&mut rng);
+            let a1 = ark_bn254::Fq2::sqrt(&((x * x * x) + ark_bn254::g2::Config::COEFF_B));
+            let (y, ref_is_valid) = if let Some(a1) = a1 {
+                // if it is possible to take square root, you have found correct y,
+                (a1, true)
+            } else {
+                // else generate some random value
+                (ark_bn254::Fq2::rand(&mut rng), false)
+            };
+            let pt = ark_bn254::G2Affine::new_unchecked(x, y);
+
+            let pt = pt.into_group();
+            const COFACTOR: &[u64] = &[
+                0x345f2299c0f9fa8d,
+                0x06ceecda572a2489,
+                0xb85045b68181585e,
+                0x30644e72e131a029,
+            ];
+            let pt = pt.mul_bigint(COFACTOR);
+            let pt = pt.into_affine();
+            // if it's a valid point, it should be on curve and subgroup (after cofactor clearing)
+            assert_eq!(
+                ref_is_valid,
+                pt.is_on_curve() && pt.is_in_correct_subgroup_assuming_on_curve()
+            );
+        }
     }
 }

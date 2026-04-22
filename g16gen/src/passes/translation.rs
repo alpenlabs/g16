@@ -3,8 +3,9 @@ use std::time::Instant;
 use g16ckt::{
     WireId,
     circuit::{StreamingMode, component_meta::ComponentMetaBuilder},
-    gadgets::groth16::Groth16VerifyCompressedInput,
-    groth16_verify_compressed,
+    gadgets::groth16::{
+        Groth16VerifyCompressedRawInput, groth16_verify_compressed_over_raw_public_input,
+    },
 };
 use tracing::info;
 
@@ -13,8 +14,8 @@ use crate::modes::translate::TranslationMode;
 const OUTPUT_FILE: &str = "g16.ckt";
 
 /// Run the translation pass to generate the circuit file
-pub async fn run_translation_pass(
-    inputs: &Groth16VerifyCompressedInput,
+pub async fn run_translation_pass<const N: usize>(
+    inputs: &Groth16VerifyCompressedRawInput<N>,
     primary_input_count: usize,
     credits: Vec<u16>,
     output_wires: Vec<WireId>,
@@ -25,7 +26,8 @@ pub async fn run_translation_pass(
     let metadata_start = Instant::now();
     // Run circuit construction in metadata mode
     let meta_output_wires = {
-        let ok = groth16_verify_compressed(&mut metadata_mode, &allocated_inputs);
+        let ok =
+            groth16_verify_compressed_over_raw_public_input(&mut metadata_mode, &allocated_inputs);
         vec![ok]
     };
     let metadata_time = metadata_start.elapsed();
@@ -48,7 +50,7 @@ pub async fn run_translation_pass(
     let translation_start = Instant::now();
     // Run the translation pass
     let translation_output_wires = {
-        let ok = groth16_verify_compressed(&mut ctx, &allocated_inputs);
+        let ok = groth16_verify_compressed_over_raw_public_input(&mut ctx, &allocated_inputs);
         vec![ok]
     };
 
@@ -57,7 +59,7 @@ pub async fn run_translation_pass(
     let elapsed_translation = translation_start.elapsed();
     info!(
         "Completed translation pass ({} inputs) in {:?}",
-        allocated_inputs.public.len(),
+        N * 8,
         elapsed_translation
     );
     ctx.get_mut_mode().unwrap().finish();

@@ -880,6 +880,8 @@ name = "g16gen"
 version = "0.1.0"
 dependencies = [
  "ahash",
+ "ark-bn254",
+ "ark-groth16",
  "ckt-fmtv5-types",
  "ckt-lvl",
  "cynosure 0.3.0",
