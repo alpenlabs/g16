@@ -9,24 +9,24 @@ const FANOUT_FILE: &str = "fanout.cache";
 const OUTPUT_WIRES_FILE: &str = "outputs.cache";
 
 /// Try to load cached fanout and output wires from files
-pub fn try_load_cache() -> Option<(Vec<u16>, Vec<WireId>)> {
+pub fn try_load_cache() -> Option<(Vec<u32>, Vec<WireId>)> {
     let fanout = load_fanout()?;
     let output_wires = load_output_wires()?;
     Some((fanout, output_wires))
 }
 
 /// Load fanout from cache file
-fn load_fanout() -> Option<Vec<u16>> {
+fn load_fanout() -> Option<Vec<u32>> {
     let file = OpenOptions::new().read(true).open(FANOUT_FILE).ok()?;
     let mut reader = BufReader::new(file);
     let mut fanout = Vec::new();
 
     loop {
-        let mut buf = [0u8; 2];
+        let mut buf = [0u8; 4];
         if reader.read_exact(&mut buf).is_err() {
             break;
         }
-        fanout.push(u16::from_le_bytes(buf));
+        fanout.push(u32::from_le_bytes(buf));
     }
 
     Some(fanout)
@@ -50,7 +50,7 @@ fn load_output_wires() -> Option<Vec<WireId>> {
 }
 
 /// Save fanout to cache file
-pub fn save_fanout(fanout: &[u16]) -> std::io::Result<()> {
+pub fn save_fanout(fanout: &[u32]) -> std::io::Result<()> {
     let file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -82,7 +82,7 @@ pub fn save_output_wires(output_wires: &[WireId]) -> std::io::Result<()> {
 }
 
 /// Save both credits and output wires to cache files
-pub fn save_cache(credits: &[u16], output_wires: &[WireId]) -> std::io::Result<()> {
+pub fn save_cache(credits: &[u32], output_wires: &[WireId]) -> std::io::Result<()> {
     save_fanout(credits)?;
     save_output_wires(output_wires)?;
     Ok(())

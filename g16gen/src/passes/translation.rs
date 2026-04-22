@@ -17,7 +17,7 @@ const OUTPUT_FILE: &str = "g16.ckt";
 pub async fn run_translation_pass<const N: usize>(
     inputs: &Groth16VerifyCompressedRawInput<N>,
     primary_input_count: usize,
-    credits: Vec<u16>,
+    credits: Vec<u32>,
     output_wires: Vec<WireId>,
 ) {
     let (allocated_inputs, root_meta) = ComponentMetaBuilder::new_with_input(inputs);

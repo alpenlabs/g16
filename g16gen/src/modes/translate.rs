@@ -18,7 +18,7 @@ use kanal::{Sender, bounded_async};
 use monoio::{FusionDriver, RuntimeBuilder, select};
 
 pub struct TranslationMode {
-    creds: Vec<u16>,
+    creds: Vec<u32>,
     next_normalized_id: u64,
 
     // Constants
@@ -72,7 +72,7 @@ impl CircuitMode for TranslationMode {
 
 impl TranslationMode {
     pub async fn new(
-        creds: Vec<u16>,
+        creds: Vec<u32>,
         path: &str,
         primary_inputs: u64,
         outputs: Vec<WireId>,
@@ -151,7 +151,7 @@ impl TranslationMode {
             in1: in1.to_u64(),
             in2: in2.to_u64(),
             out: out.to_u64(),
-            credits: self.creds[out.to_u64() as usize] as u32,
+            credits: self.creds[out.to_u64() as usize],
             gate_type,
         };
         loop {
