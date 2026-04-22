@@ -891,6 +891,8 @@ dependencies = [
  "monoio",
  "rand",
  "rand_chacha",
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber 0.3.22",
 ]

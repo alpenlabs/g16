@@ -18,3 +18,5 @@ monoio = { version = "0.2.4", features = ["sync"] }
 kanal = "0.1.1"
 ark-groth16 = "0.5.0"
 ark-bn254 = "0.5.0"
+serde_json = "1.0"
+serde = { version = "1.0.225", features = ["derive"] }
