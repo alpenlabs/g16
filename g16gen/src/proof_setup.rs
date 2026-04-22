@@ -9,6 +9,13 @@ use g16ckt::{
     },
 };
 
+/// This function generates an instance of Groth16VerifyCompressedRawInput which includes both
+/// compile time parameters like groth16 verification key and SP1_VKEY_HASH as well as run-time
+/// parameters like groth16 proof and raw public inputs.
+/// The function is used to compile a binary circuit and also to dump the input it takes during runtime
+/// as a binary file.
+/// TODO (@manishbista28): separate the function such that there exist different functions for compile time
+/// and runtime.
 pub fn generate_test_proof<const N: usize>() -> Groth16VerifyCompressedRawInput<N> {
     let raw_public_input: [u8; N] = vec![
         55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 55,
