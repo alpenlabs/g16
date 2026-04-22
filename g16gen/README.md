@@ -23,7 +23,7 @@ g16gen/
 ├── src/
 │   ├── main.rs              # CLI entry point and command handling
 │   ├── cache.rs             # Credits and output wires caching
-│   ├── circuit_arfs.rs      # Arguemnts to compile and run circuit
+│   ├── circuit_arfs.rs      # Arguments to compile and run circuit
 │   ├── modes/               # Circuit evaluation modes
 │   │   ├── credit.rs        # Credit collection mode
 │   │   └── translate.rs     # Circuit translation mode
