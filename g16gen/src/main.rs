@@ -25,9 +25,9 @@ enum Command {
 fn parse_args() -> Command {
     let mut args: Vec<String> = std::env::args().collect();
 
-    if args.len() != 2 {
-        eprintln!("Expected total of two arguments in the form g16gen <COMMAND> [OPTIONS]");
-        args = vec![String::from("help")];
+    if args.len() != 3 {
+        eprintln!("Unexpected count of arguments; Expected in the form g16gen <COMMAND> [OPTIONS]");
+        args = vec![String::from("g16gen"), String::from("help")];
     }
 
     match args[1].as_str() {

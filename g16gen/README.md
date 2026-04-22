@@ -19,11 +19,11 @@ The tool supports two main operations:
 
 ```
 g16gen/
+├── example_config           # Example config file that holds params to create and run ckt
 ├── src/
 │   ├── main.rs              # CLI entry point and command handling
 │   ├── cache.rs             # Credits and output wires caching
-│   ├── dummy_circuit.rs     # Test circuit for proof generation
-│   ├── proof_setup.rs       # Test proof generation utilities
+│   ├── circuit_arfs.rs      # Arguemnts to compile and run circuit
 │   ├── modes/               # Circuit evaluation modes
 │   │   ├── credit.rs        # Credit collection mode
 │   │   └── translate.rs     # Circuit translation mode
@@ -35,12 +35,12 @@ g16gen/
 
 ## Commands
 
-### `generate [k]`
+### `generate [path_to_config_file]`
 
-Generates a boolean circuit file encoding a Groth16 proof verifier as a sequence of boolean gates.
+Generates boolean circuit file encoding a SP1 Groth16 proof verifier as a sequence of boolean gates.
 
 **Arguments:**
-- `k` (optional): Constraint size parameter. Creates a circuit with 2^k constraints. Default: 6
+- `path_to_config_file` : File which includes parameters necessary to generate a groth16 verifier boolean circuit
 
 **Output:**
 - `g16.ckt` - The boolean circuit file containing the gate-level encoding of the Groth16 verifier
@@ -49,35 +49,27 @@ Generates a boolean circuit file encoding a Groth16 proof verifier as a sequence
 
 **Example:**
 ```bash
-# Generate circuit with 2^6 = 64 constraints
-g16gen generate 6
-
-# Generate circuit with 2^10 = 1024 constraints
-g16gen generate 10
+g16gen generate example_config/compile_time.json
 ```
 
 **Process:**
-1. Generates a test Groth16 proof with the specified constraint size
+1. Reads and decodes compile time constants passed through json file
 2. Runs the credits pass to compute wire credits (cached for reuse)
 3. Runs the translation pass to generate the boolean circuit file with gate encodings
 
-### `write-input-bits [k]`
+### `write-input-bits [path_to_config_file]`
 
 Extracts the boolean input values from a Groth16 proof and writes them to a file.
 
 **Arguments:**
-- `k` (optional): Constraint size parameter. Creates a proof with 2^k constraints. Default: 6
+- `path_to_config_file` : File includes parameters that form Groth16 verifier input
 
 **Output:**
-- `input_bits.txt` - UTF-8 file containing '0' and '1' characters representing the boolean inputs
+- `inputs.txt` - UTF-8 file containing '0' and '1' characters representing the boolean inputs
 
 **Example:**
 ```bash
-# Write input bits for a 2^6 constraint circuit
-g16gen write-input-bits 6
-
-# Write input bits for a 2^8 constraint circuit
-g16gen write-input-bits 8
+g16gen write-input-bits example_config/run_time.json
 ```
 
 **Input Structure:**
@@ -116,8 +108,7 @@ The `write-input-bits` command extracts boolean values by:
 
 1. Allocating wire IDs for the compressed Groth16 inputs
 2. Converting field elements and curve points to their bit representations
-3. Using Montgomery form for field arithmetic
-4. Computing y-coordinate compression flags for elliptic curve points
+3. Write the combined bit representations to file
 
 The extraction process mirrors the encoding logic used during circuit evaluation, ensuring the bits match what the boolean gates expect as inputs.
 
@@ -137,7 +128,7 @@ cargo build --release -p g16gen
 
 Run with logging:
 ```bash
-RUST_LOG=info ./target/release/g16gen generate 6
+RUST_LOG=info ./target/release/g16gen generate example_config/compile_time.json
 ```
 
 ## Circuit Format
@@ -151,8 +142,8 @@ The file format is designed for efficient evaluation in garbled circuit protocol
 
 ## Notes
 
-- The test proofs use a seeded RNG (seed: 12345) for deterministic results
+- Groth16 verifier has been written based on SP1 v5 zkvm
 - All inputs use the BN254 elliptic curve (254-bit prime field) and its associated scalar field Fr
-- Compressed points use the standard compression format: x-coordinate (Montgomery form) + y-sign bit
+- Compressed points use a standard compression format which is gnark's compression format
 - The circuit encodes all arithmetic in binary (bit-level) representation
 - Typical circuit size: ~1-2 million gates for a single Groth16 verification
