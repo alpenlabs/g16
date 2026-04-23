@@ -1,48 +1,43 @@
+use std::path::PathBuf;
+
 use g16ckt::{WireId, circuit::CircuitInput, gadgets::groth16::Groth16VerifyCompressedRawInput};
 use tracing::info;
 
 mod cache;
-mod dummy_circuit;
+mod circuit_args;
 mod modes;
 mod passes;
-mod proof_setup;
 
 use cache::{save_cache, try_load_cache};
 use passes::{
     credits::run_credits_pass, input_bits::write_input_bits, translation::run_translation_pass,
 };
-use proof_setup::generate_test_proof;
+
+use crate::circuit_args::{CompileTimeData, RunTimeData};
 
 #[derive(Debug)]
 enum Command {
-    Generate { constraint_size: usize },
-    WriteInputBits { constraint_size: usize },
+    Generate { conf: PathBuf },
+    WriteInputBits { conf: PathBuf },
     Help,
 }
 
 fn parse_args() -> Command {
-    let args: Vec<String> = std::env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
 
-    if args.len() < 2 {
-        return Command::Generate { constraint_size: 6 };
+    if args.len() != 3 {
+        eprintln!("Unexpected count of arguments; Expected in the form g16gen <COMMAND> [OPTIONS]");
+        args = vec![String::from("g16gen"), String::from("help")];
     }
 
     match args[1].as_str() {
         "generate" => {
-            let constraint_size = if args.len() > 2 {
-                args[2].parse().unwrap_or(6)
-            } else {
-                6
-            };
-            Command::Generate { constraint_size }
+            let path_to_conf = PathBuf::from(args[2].trim());
+            Command::Generate { conf: path_to_conf }
         }
         "write-input-bits" => {
-            let constraint_size = if args.len() > 2 {
-                args[2].parse().unwrap_or(6)
-            } else {
-                6
-            };
-            Command::WriteInputBits { constraint_size }
+            let path_to_conf = PathBuf::from(args[2].trim());
+            Command::WriteInputBits { conf: path_to_conf }
         }
         "help" | "--help" | "-h" => Command::Help,
         _ => {
@@ -61,25 +56,27 @@ fn print_help() {
     println!("    g16gen <COMMAND> [OPTIONS]");
     println!();
     println!("COMMANDS:");
-    println!("    generate [k]           Generate boolean circuit file encoding Groth16 verifier");
     println!(
-        "                           (default: k=6, creates verifier for 2^k constraint proofs)"
+        "    generate path_to_compile_time_config           Generate boolean circuit file encoding Groth16 verifier"
     );
-    println!("    write-input-bits [k]   Extract boolean input bits for a specific Groth16 proof");
-    println!("                           (default: k=6, outputs bits to input_bits.txt)");
+    println!(
+        "    write-input-bits path_to_run_time_config       Extract boolean input bits for a specific Groth16 proof"
+    );
+    println!("                           (outputs bits to inputs.txt)");
     println!("    help                   Print this help message");
     println!();
     println!("EXAMPLES:");
     println!(
-        "    g16gen generate 8             # Generate verifier circuit for 2^8 constraint proofs"
+        "    g16gen generate example_config/compile_time.json             # Generate verifier circuit sp1 groth16 verifier"
     );
-    println!("    g16gen write-input-bits 6     # Extract input bits for a specific proof");
+    println!(
+        "    g16gen write-input-bits example_config/run_time.json     # Extract input bits for a specific proof"
+    );
 }
 
-async fn run_generate(k: usize) {
-    info!("Generating test proof with 2^{} constraints", k);
-    const INPUT_MESSAGE_BYTES: usize = 36;
-    let inputs: Groth16VerifyCompressedRawInput<INPUT_MESSAGE_BYTES> = generate_test_proof();
+async fn run_generate(conf: PathBuf) {
+    let parsed_data = CompileTimeData::parse(conf).expect("expect data is parsed");
+    let inputs = parsed_data.into_compiletime_input();
 
     let input_wires = inputs.allocate(|| WireId(0)); // Dummy wire generator
     let primary_input_count = Groth16VerifyCompressedRawInput::collect_wire_ids(&input_wires).len();
@@ -108,10 +105,9 @@ async fn run_generate(k: usize) {
     info!("Circuit generation complete!");
 }
 
-async fn run_write_input_bits(k: usize) {
-    info!("Generating test proof with 2^{} constraints", k);
-    const INPUT_MESSAGE_BYTES: usize = 36;
-    let inputs: Groth16VerifyCompressedRawInput<INPUT_MESSAGE_BYTES> = generate_test_proof();
+async fn run_write_input_bits(conf: PathBuf) {
+    let parsed_data = RunTimeData::parse(conf).expect("expect data is parsed");
+    let inputs = parsed_data.into_runtime_input();
 
     let input_wires = inputs.allocate(|| WireId(0)); // Dummy wire generator
     let primary_input_count = Groth16VerifyCompressedRawInput::collect_wire_ids(&input_wires).len();
@@ -132,16 +128,13 @@ async fn main() {
     let command = parse_args();
 
     match command {
-        Command::Generate { constraint_size } => {
-            info!("Running generate command with k={}", constraint_size);
-            run_generate(constraint_size).await;
+        Command::Generate { conf } => {
+            info!("Running generate command with config on path {:?}", conf);
+            run_generate(conf).await;
         }
-        Command::WriteInputBits { constraint_size } => {
-            info!(
-                "Running write-input-bits command with k={}",
-                constraint_size
-            );
-            run_write_input_bits(constraint_size).await;
+        Command::WriteInputBits { conf } => {
+            info!("Running write-input-bits command config on path {:?}", conf);
+            run_write_input_bits(conf).await;
         }
         Command::Help => {
             print_help();
