@@ -5,7 +5,7 @@
 //! the structure used in the main branch.
 
 use ark_ec::bn::BnConfig;
-use ark_ff::{AdditiveGroup, BitIteratorBE, Field};
+use ark_ff::{AdditiveGroup, Field};
 use circuit_component_macro::component;
 
 use crate::{
@@ -14,59 +14,7 @@ use crate::{
     gadgets::bn254::fq12::{Fq12, ValidFq12},
 };
 
-pub fn conjugate_native(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
-    ark_bn254::Fq12::new(f.c0, -f.c1)
-}
-
-pub fn cyclotomic_exp_native(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
-    let mut res = ark_bn254::Fq12::ONE;
-    let mut found_nonzero = false;
-    for value in BitIteratorBE::without_leading_zeros(ark_bn254::Config::X).map(|e| e as i8) {
-        if found_nonzero {
-            res.square_in_place();
-        }
-        if value != 0 {
-            found_nonzero = true;
-            if value > 0 {
-                res *= &f;
-            }
-        }
-    }
-    res
-}
-
-pub fn exp_by_neg_x_native(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
-    conjugate_native(cyclotomic_exp_native(f))
-}
-
-pub fn final_exponentiation_native(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
-    let u = f.inverse().unwrap() * conjugate_native(f);
-    let r = u.frobenius_map(2) * u;
-    let y0 = exp_by_neg_x_native(r);
-    let y1 = y0.square();
-    let y2 = y1.square();
-    let y3 = y2 * y1;
-    let y4 = exp_by_neg_x_native(y3);
-    let y5 = y4.square();
-    let y6 = exp_by_neg_x_native(y5);
-    let y7 = conjugate_native(y3);
-    let y8 = conjugate_native(y6);
-    let y9 = y8 * y4;
-    let y10 = y9 * y7;
-    let y11 = y10 * y1;
-    let y12 = y10 * y4;
-    let y13 = y12 * r;
-    let y14 = y11.frobenius_map(1);
-    let y15 = y14 * y13;
-    let y16 = y10.frobenius_map(2);
-    let y17 = y16 * y15;
-    let r2 = conjugate_native(r);
-    let y18 = r2 * y11;
-    let y19 = y18.frobenius_map(3);
-    y19 * y17
-}
-
-pub fn cyclotomic_exp_fast_inverse_montgomery_fast<C: CircuitContext>(
+fn cyclotomic_exp_fast_inverse_montgomery_fast<C: CircuitContext>(
     circuit: &mut C,
     f: &Fq12,
 ) -> Fq12 {
@@ -96,13 +44,16 @@ pub fn cyclotomic_exp_fast_inverse_montgomery_fast<C: CircuitContext>(
     res
 }
 
-pub fn exp_by_neg_x_montgomery<C: CircuitContext>(circuit: &mut C, f: &Fq12) -> Fq12 {
+fn exp_by_neg_x_montgomery<C: CircuitContext>(circuit: &mut C, f: &Fq12) -> Fq12 {
     let f2 = cyclotomic_exp_fast_inverse_montgomery_fast(circuit, f);
     Fq12::conjugate(circuit, &f2)
 }
 
 #[component]
-pub fn final_exponentiation_montgomery<C: CircuitContext>(circuit: &mut C, f: &Fq12) -> ValidFq12 {
+pub(crate) fn final_exponentiation_montgomery<C: CircuitContext>(
+    circuit: &mut C,
+    f: &Fq12,
+) -> ValidFq12 {
     let is_zero = Fq12::equal_constant(circuit, f, &ark_bn254::Fq12::ZERO);
     let is_valid = circuit.issue_wire();
     circuit.add_gate(crate::Gate {
