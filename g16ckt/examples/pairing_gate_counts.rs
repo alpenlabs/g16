@@ -27,6 +27,7 @@ fn fq12_one_const() -> Fq12 {
 struct Inputs {
     g1: ark::G1Projective,
     g2: ark::G2Projective,
+    #[allow(unused)]
     g2_aff: ark::G2Affine,
 }
 
@@ -94,14 +95,9 @@ fn main() {
     const ENABLE_ADD_IN_PLACE_MONTGOMERY: bool = true;
     const ENABLE_MUL_BY_CHAR_MONTGOMERY: bool = true;
     const ENABLE_ELL_MONTGOMERY: bool = true;
-    const ENABLE_ELL_BY_CONSTANT_MONTGOMERY: bool = true;
     const ENABLE_ELL_COEFFS_EVALUATE_MONTGOMERY_FAST: bool = true;
-    const ENABLE_MILLER_LOOP_EVALUATE_MONTGOMERY_FAST: bool = true;
-    const ENABLE_MILLER_LOOP: bool = true;
     const ENABLE_DESERIALIZED_COMPRESSED_G1: bool = true;
     const ENABLE_DESERIALIZED_COMPRESSED_G2: bool = true;
-    const ENABLE_MULTI_MILLER_LOOP: bool = true;
-    const ENABLE_MULTI_MILLER_LOOP_EVALUATE_MONTGOMERY_FAST: bool = true;
 
     // Deterministic inputs - use affine points with z=1 for fair comparison
     let _rng = ChaCha20Rng::seed_from_u64(42);
@@ -222,27 +218,7 @@ fn main() {
         }));
     }
 
-    // 5) ell_by_constant_montgomery (const Q coeffs)
-    if ENABLE_ELL_BY_CONSTANT_MONTGOMERY {
-        handles.push(thread::spawn({
-            let inputs = inputs.clone();
-            move || {
-                run_and_print(
-                    "test_ell_by_constant_montgomery",
-                    inputs.clone(),
-                    move |ctx, w| {
-                        let f0 = fq12_one_const();
-                        let coeffs = pairing::ell_coeffs(inputs.g2_aff);
-                        let c = coeffs.into_iter().next().unwrap();
-                        let _f1 = pairing::ell_eval_const(ctx, &f0, &c, &w.g1);
-                        vec![]
-                    },
-                );
-            }
-        }));
-    }
-
-    // 6) ell_coeffs_evaluate_montgomery_fast equivalent: build coeffs for variable Q
+    // 5) ell_coeffs_evaluate_montgomery_fast equivalent: build coeffs for variable Q
     if ENABLE_ELL_COEFFS_EVALUATE_MONTGOMERY_FAST {
         handles.push(thread::spawn({
             let inputs = inputs.clone();
@@ -259,37 +235,7 @@ fn main() {
         }));
     }
 
-    // 6b) miller loops
-    if ENABLE_MILLER_LOOP_EVALUATE_MONTGOMERY_FAST {
-        handles.push(thread::spawn({
-            let inputs = inputs.clone();
-            move || {
-                run_and_print(
-                    "test_miller_loop_evaluate_montgomery_fast",
-                    inputs,
-                    move |ctx, w| {
-                        let _f = pairing::miller_loop_montgomery_fast(ctx, &w.g1, &w.g2);
-                        vec![]
-                    },
-                );
-            }
-        }));
-    }
-
-    if ENABLE_MILLER_LOOP {
-        handles.push(thread::spawn({
-            let inputs_for_arg = inputs.clone();
-            let inputs_for_capture = inputs.clone();
-            move || {
-                run_and_print("test_miller_loop", inputs_for_arg, move |ctx, w| {
-                    let _f = pairing::miller_loop_const_q(ctx, &w.g1, &inputs_for_capture.g2_aff);
-                    vec![]
-                });
-            }
-        }));
-    }
-
-    // 7) deserialize_compressed_g1: y = sqrt(x^3 + b); sign by flag (TRUE)
+    // 6) deserialize_compressed_g1: y = sqrt(x^3 + b); sign by flag (TRUE)
     if ENABLE_DESERIALIZED_COMPRESSED_G1 {
         handles.push(thread::spawn({
             let inputs = inputs.clone();
@@ -315,7 +261,7 @@ fn main() {
         }));
     }
 
-    // 8) deserialize_compressed_g2: y = sqrt(x^3 + b) over Fq2; sign by flag (TRUE)
+    // 7) deserialize_compressed_g2: y = sqrt(x^3 + b) over Fq2; sign by flag (TRUE)
     if ENABLE_DESERIALIZED_COMPRESSED_G2 {
         handles.push(thread::spawn({
             let inputs = inputs.clone();
@@ -345,41 +291,6 @@ fn main() {
                     out.extend(y1.to_wires_vec());
                     out
                 });
-            }
-        }));
-    }
-
-    // 9) multi_miller_loop_const_q
-    if ENABLE_MULTI_MILLER_LOOP {
-        handles.push(thread::spawn({
-            let inputs_for_arg = inputs.clone();
-            let inputs_for_capture = inputs.clone();
-            move || {
-                run_and_print("test_multi_miller_loop", inputs_for_arg, move |ctx, w| {
-                    let ps = vec![w.g1.clone()];
-                    let qs = vec![inputs_for_capture.g2_aff];
-                    let _f = pairing::multi_miller_loop_const_q(ctx, &ps, &qs);
-                    vec![]
-                });
-            }
-        }));
-    }
-
-    // 10) multi_miller_loop_montgomery_fast
-    if ENABLE_MULTI_MILLER_LOOP_EVALUATE_MONTGOMERY_FAST {
-        handles.push(thread::spawn({
-            let inputs = inputs.clone();
-            move || {
-                run_and_print(
-                    "test_multi_miller_loop_evaluate_montgomery_fast",
-                    inputs,
-                    move |ctx, w| {
-                        let ps = vec![w.g1.clone()];
-                        let qs = vec![w.g2.clone()];
-                        let _f = pairing::multi_miller_loop_montgomery_fast(ctx, &ps, &qs);
-                        vec![]
-                    },
-                );
             }
         }));
     }

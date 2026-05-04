@@ -23,7 +23,4 @@ pub use fq12::Fq12;
 pub use g1::G1Projective;
 pub use g2::G2Projective;
 pub use montgomery::Montgomery;
-pub use pairing::{
-    ell_coeffs, miller_loop_const_q, multi_miller_loop_const_q, multi_pairing_const_q,
-    pairing_const_q,
-};
+pub use pairing::ell_coeffs;
