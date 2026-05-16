@@ -1,0 +1,26 @@
+[package]
+name = "g16-pipeline"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "g16-pipeline"
+path = "src/main.rs"
+
+[dependencies]
+sp1-verifier = { version = "=6.2.0", features = ["ark"] }
+
+ckt-lvl = { git = "https://github.com/alpenlabs/ckt" }
+
+ark-serialize = "0.5.0"
+
+num-bigint = "0.4"
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+monoio = { version = "0.2.4", features = ["sync"] }
+
+tracing = "0.1"
+tracing-subscriber = "0.3"
