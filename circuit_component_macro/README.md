@@ -1,6 +1,6 @@
 # Circuit Component Macro
 
-Attribute macros for ergonomic circuit composition in the garbled SNARK verifier.
+Attribute macros for ergonomic circuit composition in the SNARK verifier.
 
 ## Overview
 
