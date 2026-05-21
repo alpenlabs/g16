@@ -1,25 +1,22 @@
-# Garbled SNARK Verifier Circuit
+# g16ckt — Groth16 Boolean Verifier Circuit
 
-This crate is a snapshot of [BitVM/garbled-snark-verifier](https://github.com/BitVM/garbled-snark-verifier) from the BitVM Alliance. It is used for audit, testing, and experimentation.
+This crate is a snapshot of [BitVM/garbled-snark-verifier](https://github.com/BitVM/garbled-snark-verifier) from the BitVM Alliance. 
 
-A streaming garbled-circuit implementation of a Groth16 verifier over BN254. It targets large, real‑world verifier circuits while keeping memory bounded via a two‑pass streaming architecture. The crate supports three execution modes: direct boolean execution, garbling, and evaluation.
+A streaming implementation of a Groth16 verifier expressed as a boolean circuit over BN254. It targets large, real‑world verifier circuits while keeping memory bounded via a two‑pass streaming architecture.
 
 **Background**
-- **What:** Encode a SNARK verifier (Groth16 on BN254) as a boolean circuit and run it as a garbled circuit. The verifier’s elliptic‑curve and pairing arithmetic is expressed with reusable gadgets (Fq/Fr/Fq2/Fq6/Fq12, G1/G2, Miller loop, final exponentiation).
+- **What:** Encode a SNARK verifier (Groth16 on BN254) as a boolean circuit. The verifier’s elliptic‑curve and pairing arithmetic is expressed with reusable gadgets (Fq/Fr/Fq2/Fq6/Fq12, G1/G2, Miller loop, final exponentiation).
 - **How:**
-  - Use Free‑XOR and half‑gates (Zahur–Rosulek–Evans) to make XOR family gates free and reduce AND to two ciphertexts.
   - Keep field arithmetic in Montgomery form to minimize reductions and wire width churn; convert only at the edges when needed.
-  - Run a two‑phase streaming pipeline: first collect a compact “shape” of wire lifetimes (credits), then execute once with precise allocation and immediate reclamation. Garbling and evaluation synchronize via a streaming channel of ciphertexts.
+  - Run a two‑phase streaming pipeline: first collect a compact “shape” of wire lifetimes (credits), then execute once with precise allocation and immediate reclamation.
 
 **Intended Use**
-- Explore/benchmark streaming garbling on a non‑trivial circuit (Groth16 verifier).
 - Reuse BN254 gadgets for experiments or educational purposes.
 - Work with deterministic, testable building blocks that mirror arkworks semantics.
 
 **Core Concepts**
 - **WireId / Wires:** Logical circuit wires carried through streaming contexts; gadgets implement `WiresObject` to map rich types to wire vectors.
-- **S / Delta:** Garbled labels and global offset for Free‑XOR; AES‑NI or BLAKE3 is used as the PRF/RO for half‑gates.
-- **Modes:** `Execute` (booleans, for testing), `Garble` (produce ciphertexts + constants), `Evaluate` (consume ciphertexts + constants).
+- **Mode:** `Execute` performs direct boolean evaluation of the circuit, used for testing gadget correctness.
 - **Components:** Functions annotated with `#[component]` become cached, nested circuit components; a component‑keyed template pool and a metadata pass compute per‑wire fanout totals and derive per‑wire "credits" (remaining‑use counters) for tight memory reuse.
 
 **Terminology**
@@ -27,26 +24,23 @@ A streaming garbled-circuit implementation of a Groth16 verifier over BN254. It 
 - **Credits (remaining):** The runtime counter that starts at the fanout total and is decremented on each read; when it reaches 1, the next read returns ownership and frees storage.
 
 **Project Structure**
-- `src/core`: fundamental types and logic (`S`, `Delta`, `WireId`, `Gate`, `GateType`).
-- `src/circuit`: streaming builder, modes (`Execute`, `Garble`, `Evaluate`), finalization, and tests.
+- `src/core`: fundamental types and logic (`WireId`, `Gate`, `GateType`).
+- `src/circuit`: streaming builder, `Execute` mode, finalization, and tests.
 - `src/gadgets`: reusable gadgets: `bigint/u254`, BN254 fields and groups, pairing ops, and `groth16` verifier composition.
 - `src/math`: focused math helpers (Montgomery helpers).
-- `circuit_component_macro/`: proc‑macro crate backing `#[component]` ergonomics; trybuild tests live under `tests/`.
+- `../circuit_component_macro/`: proc‑macro crate backing `#[component]` ergonomics; trybuild tests live under `tests/`.
 
 ## API Overview
 
-### 1. Streaming Garbling Architecture
+### 1. Streaming Architecture
 
 The implementation uses a **streaming wire-based** circuit construction model that processes circuits incrementally to manage memory efficiently:
 
-- **Wire-Based Model**: All computations flow through `WireId` references representing circuit wires. Wires are allocated incrementally and evaluated/garbled in streaming fashion, avoiding the need to hold the entire circuit in memory.
+- **Wire-Based Model**: All computations flow through `WireId` references representing circuit wires. Wires are allocated incrementally and evaluated in streaming fashion, avoiding the need to hold the entire circuit in memory.
 
 - **Component Hierarchy**: Circuits are organized as hierarchical components that track input/output wires and gate counts. Components support caching for wire reuse optimization.
 
-- **Three Execution Modes**:
-  - `Execute`: Direct boolean evaluation for testing correctness
-  - `Garble`: Generate garbled circuit tables with Free-XOR optimization  
-  - `Evaluate`: Execute garbled circuit with garbled inputs for MPC
+- **Execution Mode**: `Execute` performs direct boolean evaluation of the circuit, used for testing gadget correctness.
 
 ### 2. Component Macro
 
@@ -76,12 +70,12 @@ The macro automatically:
 - Manages component caching and wire allocation
 - Supports up to 16 input parameters
 
-See `circuit_component_macro/` for details and compile‑time tests.
+See `../circuit_component_macro/` for details and compile‑time tests.
 
 ## Current Status
 
 - Groth16 verifier gadget implemented and covered by deterministic tests (true/false cases) using arkworks fixtures.
-- Streaming modes: `Execute`, `Garble`, and `Evaluate` are implemented with integration tests, including a garble→evaluate pipeline example.
+- `Execute` mode is implemented with integration tests.
 - BN254 gadget suite: Fq/Fr/Fq2/Fq6/Fq12 arithmetic, G1/G2 group ops, Miller loop, and final exponentiation in Montgomery form.
 - Component macro crate is integrated; trybuild tests validate signatures and errors.
 
@@ -89,13 +83,12 @@ See `circuit_component_macro/` for details and compile‑time tests.
 
 ```
 src/
-├── core/                 # S, Delta, WireId, Gate, GateType
-├── circuit/              # Streaming builder, modes, finalization, tests
-│   └── streaming/        # Two‑pass meta + execution, templates, modes
+├── core/                 # WireId, Gate, GateType
+├── circuit/              # Streaming builder, Execute mode, finalization, tests
 ├── gadgets/              # Basic, bigint/u254, BN254 fields, groups, pairing, Groth16
 └── math/                 # Montgomery helpers and small math utils
 
-circuit_component_macro/  # #[component] proc‑macro + tests
+../circuit_component_macro/  # #[component] proc‑macro + tests
 ```
 
 ## Testing
@@ -112,7 +105,3 @@ RUST_BACKTRACE=1 cargo test test_groth16_verify -- --nocapture
 # Release mode for heavy computations
 cargo test --release
 ```
-
-## Contributing
-
-Contributions are welcome. If you find a bug, have an idea, or want to improve performance or documentation, please open an issue or submit a pull request. For larger changes, start a discussion in an issue first so we can align on the approach. Thank you for helping improve the project.
