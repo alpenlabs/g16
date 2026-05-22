@@ -24,6 +24,8 @@ The `pipeline` crate is the main entry point. Given a 32-byte SP1 program vkey h
 cargo run -p g16-pipeline --release -- gen --vkey /path/to/vk.bin
 ```
 
+Note: This requires around 44 GB of RAM to run unthrottled.
+
 Output lands in `./pipeline-runs/run-YYYYMMDD-HHMMSS/v5c.ckt`. See [`pipeline/README.md`](pipeline/README.md) for flags, how to produce `vk.bin`, and the SP1 program requirements (the guest must enable the `sp1-zkvm` `blake3` feature, and `public_values` must be 36 bytes).
 
 For the lower-level v5a generation commands invoked by the pipeline, see [`g16gen/README.md`](g16gen/README.md).

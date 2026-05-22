@@ -1,29 +1,29 @@
 # g16ckt — Groth16 Boolean Verifier Circuit
 
-This crate is a snapshot of [BitVM/garbled-snark-verifier](https://github.com/BitVM/garbled-snark-verifier) from the BitVM Alliance. 
+The g16ckt crate is a snapshot of [BitVM/garbled-snark-verifier](https://github.com/BitVM/garbled-snark-verifier) from the BitVM Alliance with audit fixes and SP1 verifier integration added on top.
 
 A streaming implementation of a Groth16 verifier expressed as a boolean circuit over BN254. It targets large, real‑world verifier circuits while keeping memory bounded via a two‑pass streaming architecture.
 
 **Background**
+
 - **What:** Encode a SNARK verifier (Groth16 on BN254) as a boolean circuit. The verifier’s elliptic‑curve and pairing arithmetic is expressed with reusable gadgets (Fq/Fr/Fq2/Fq6/Fq12, G1/G2, Miller loop, final exponentiation).
 - **How:**
   - Keep field arithmetic in Montgomery form to minimize reductions and wire width churn; convert only at the edges when needed.
   - Run a two‑phase streaming pipeline: first collect a compact “shape” of wire lifetimes (credits), then execute once with precise allocation and immediate reclamation.
 
-**Intended Use**
-- Reuse BN254 gadgets for experiments or educational purposes.
-- Work with deterministic, testable building blocks that mirror arkworks semantics.
-
 **Core Concepts**
+
 - **WireId / Wires:** Logical circuit wires carried through streaming contexts; gadgets implement `WiresObject` to map rich types to wire vectors.
 - **Mode:** `Execute` performs direct boolean evaluation of the circuit, used for testing gadget correctness.
 - **Components:** Functions annotated with `#[component]` become cached, nested circuit components; a component‑keyed template pool and a metadata pass compute per‑wire fanout totals and derive per‑wire "credits" (remaining‑use counters) for tight memory reuse.
 
 **Terminology**
+
 - **Fanout (total):** Total number of downstream reads/uses a wire will have within a component.
 - **Credits (remaining):** The runtime counter that starts at the fanout total and is decremented on each read; when it reaches 1, the next read returns ownership and frees storage.
 
 **Project Structure**
+
 - `src/core`: fundamental types and logic (`WireId`, `Gate`, `GateType`).
 - `src/circuit`: streaming builder, `Execute` mode, finalization, and tests.
 - `src/gadgets`: reusable gadgets: `bigint/u254`, BN254 fields and groups, pairing ops, and `groth16` verifier composition.
@@ -64,7 +64,9 @@ fn full_adder(ctx: &mut impl CircuitContext, a: WireId, b: WireId, cin: WireId) 
     (sum, carry)
 }
 ```
+
 The macro automatically:
+
 - Collects input parameters into wire lists
 - Creates child components with proper input/output tracking
 - Manages component caching and wire allocation
