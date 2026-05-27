@@ -55,7 +55,7 @@ Enable the feature in the **SP1 program's** `Cargo.toml` (the guest, not the hos
 sp1-zkvm = { ..., features = ["blake3"] }
 ```
 
-This is a feature on `sp1-zkvm` (the guest entrypoint). At guest init it sets `PUBLIC_VALUES_HASHER = blake3::Hasher::new()` instead of `Sha256::new()` (`sp1-zkvm/src/lib.rs:146`).
+This is a feature on `sp1-zkvm` (the guest entrypoint). At guest init it sets `PUBLIC_VALUES_HASHER = blake3::Hasher::new()` instead of `Sha256::new()` (`sp1-zkvm/src/lib.rs`).
 
 ### `public_values` must be exactly 36 bytes
 
@@ -66,7 +66,7 @@ This is a feature on `sp1-zkvm` (the guest entrypoint). At guest init it sets `P
 A binary file containing the 32 raw bytes of the SP1 program's verifying-key hash. This is what `sp1_sdk::HashableKey::bytes32_raw()` returns — see the [sp1-sdk docs](https://docs.rs/sp1-sdk) and the SP1 [getting-started guide](https://docs.succinct.xyz/) for setting up a prover client and `setup`-ing your ELF.
 
 ```rust
-use sp1_sdk::{HashableKey, Prover, ProverClient};
+use sp1_sdk::{HashableKey, Prover, ProverClient, ProvingKey};
 
 let prover = ProverClient::from_env().await;
 let pk = prover.setup(MY_PROGRAM_ELF).await.unwrap();

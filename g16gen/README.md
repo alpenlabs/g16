@@ -10,10 +10,6 @@ The tool supports two main operations:
 
 1. **Circuit Generation**: Creates a complete boolean gate-level circuit file (`.ckt`) encoding a Groth16 proof verifier, with optimized wire ordering based on usage credits
 2. **Input Bits Extraction**: Extracts the boolean input bits that encode a specific Groth16 proof (proof points A, B, C) and its public inputs
-</text>
-
-<old_text line=96>
-## Implementation Details
 
 ## Project Structure
 
@@ -23,9 +19,9 @@ g16gen/
 ├── src/
 │   ├── main.rs              # CLI entry point and command handling
 │   ├── cache.rs             # Credits and output wires caching
-│   ├── circuit_arfs.rs      # Arguments to compile and run circuit
+│   ├── circuit_args.rs      # Arguments to compile and run circuit
 │   ├── modes/               # Circuit evaluation modes
-│   │   ├── credit.rs        # Credit collection mode
+│   │   ├── fanout_ctr.rs    # Fanout counter collection mode
 │   │   └── translate.rs     # Circuit translation mode
 │   └── passes/              # Circuit generation passes
 │       ├── credits.rs       # Credits computation pass
@@ -44,7 +40,7 @@ Generates boolean circuit file encoding a SP1 Groth16 proof verifier as a sequen
 
 **Output:**
 - `g16.ckt` - The boolean circuit file containing the gate-level encoding of the Groth16 verifier
-- `credits.cache` - Wire credits cache (for future runs)
+- `fanout.cache` - Wire fanout cache (for future runs)
 - `outputs.cache` - Output wires cache (for future runs)
 
 **Example:**
@@ -72,17 +68,6 @@ Extracts the boolean input values from a Groth16 proof and writes them to a file
 g16gen write-input-bits example_config/run_time.json
 ```
 
-**Input Structure:**
-
-The input bits represent a specific Groth16 proof encoded as boolean values. They are extracted from the compressed Groth16 verification inputs in the following order:
-
-1. **Public Inputs** (Fr field elements): Each public input is encoded as 254 bits (BN254 Fr field size)
-2. **Proof Point A** (G1): Compressed x-coordinate (254 bits) + y-flag (1 bit)
-3. **Proof Point B** (G2): Compressed x-coordinate (508 bits, Fq2) + y-flag (1 bit)
-4. **Proof Point C** (G1): Compressed x-coordinate (254 bits) + y-flag (1 bit)
-
-All bits are in little-endian order within each field element.
-
 ### `help`
 
 Displays usage information.
@@ -97,7 +82,7 @@ g16gen help
 
 The circuit generation process uses caching to avoid redundant computation:
 
-- **credits.cache**: Stores computed wire credits (3 bytes per wire)
+- **fanout.cache**: Stores per-wire fanout counts (4 bytes / u32 per wire)
 - **outputs.cache**: Stores output wire IDs (8 bytes per wire)
 
 If these files exist, the credits pass is skipped and cached values are used instead.
@@ -142,8 +127,8 @@ The file format is designed for efficient evaluation in garbled circuit protocol
 
 ## Notes
 
-- Groth16 verifier has been written based on SP1 v5 zkvm
+- Groth16 verifier has been written based on SP1 v6 zkvm
 - All inputs use the BN254 elliptic curve (254-bit prime field) and its associated scalar field Fr
 - Compressed points use a standard compression format which is gnark's compression format
 - The circuit encodes all arithmetic in binary (bit-level) representation
-- Typical circuit size: ~1-2 million gates for a single Groth16 verification
+- Typical circuit size: ~11.17 billion gates for a single SP1 Groth16 verification (exact target in `.scripts/gates_monitor.py`)
