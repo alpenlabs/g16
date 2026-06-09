@@ -790,14 +790,13 @@ mod tests {
     use ark_ec::{AffineRepr, CurveGroup, PrimeGroup};
     use ark_ff::UniformRand;
     use ark_serialize::CanonicalSerialize;
-    use rand::{Rng, SeedableRng, thread_rng};
+    use rand::{Rng, SeedableRng, rngs::OsRng};
     use rand_chacha::ChaCha20Rng;
 
     use super::*;
     use crate::{
         circuit::{CircuitBuilder, CircuitInput, EncodeInput, modes::CircuitMode},
         gadgets::bn254::pairing::double_in_place,
-        test_utils::trng,
     };
 
     pub fn rnd_g2(rng: &mut impl Rng) -> ark_bn254::G2Projective {
@@ -856,7 +855,7 @@ mod tests {
     #[test]
     fn test_g2p_add_montgomery() {
         // Generate random G2 points
-        let mut rng = thread_rng();
+        let mut rng = OsRng;
         let a = rnd_g2(&mut rng);
         let b = rnd_g2(&mut rng);
         let c = a + b;
@@ -886,7 +885,7 @@ mod tests {
     #[test]
     fn test_g2p_double_montgomery() {
         // Generate random G2 point
-        let mut rng = thread_rng();
+        let mut rng = OsRng;
         let a = rnd_g2(&mut rng);
         let c = a + a;
 
@@ -910,7 +909,7 @@ mod tests {
         use ark_ec::CurveGroup;
 
         // a is in Jacobian
-        let mut rng = thread_rng();
+        let mut rng = OsRng;
         let a = rnd_g2(&mut rng);
 
         // Jacobian doubling via library, then to affine
@@ -934,7 +933,7 @@ mod tests {
     #[test]
     fn test_g2p_neg() {
         // Generate random G2 point
-        let a = rnd_g2(&mut trng());
+        let a = rnd_g2(&mut OsRng);
         let neg_a = -a;
 
         // Convert to Montgomery form
@@ -957,9 +956,9 @@ mod tests {
         let w = 2;
         let n = 2_usize.pow(w as u32);
         let a_val = (0..n)
-            .map(|_| G2Projective::as_montgomery(rnd_g2(&mut trng())))
+            .map(|_| G2Projective::as_montgomery(rnd_g2(&mut OsRng)))
             .collect::<Vec<_>>();
-        let s_val = (0..w).map(|_| trng().r#gen()).collect::<Vec<_>>();
+        let s_val = (0..w).map(|_| OsRng.r#gen()).collect::<Vec<_>>();
 
         let mut u = 0;
         for i in s_val.iter().rev() {

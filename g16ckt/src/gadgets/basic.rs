@@ -106,10 +106,11 @@ pub fn multiplexer<C: CircuitContext>(
 
 #[cfg(test)]
 mod tests {
+    use rand::rngs::OsRng;
     use test_log::test;
 
     use super::*;
-    use crate::{circuit::CircuitBuilder, test_utils::trng};
+    use crate::circuit::CircuitBuilder;
 
     #[test]
     fn not_not() {
@@ -324,7 +325,7 @@ mod tests {
 
         use crate::circuit::{CircuitInput, EncodeInput, modes::CircuitMode};
 
-        let mut rng = trng();
+        let mut rng = OsRng;
 
         // Test with w=3, which means 8 inputs and 3 selector bits
         // Ad-hoc structure for this test

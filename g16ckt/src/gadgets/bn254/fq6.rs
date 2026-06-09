@@ -530,6 +530,7 @@ impl Fq6 {
 #[cfg(test)]
 mod tests {
     use ark_ff::{AdditiveGroup, Field, Fp12Config, PrimeField};
+    use rand::rngs::OsRng;
     use test_log::test;
 
     use super::*;
@@ -542,11 +543,10 @@ mod tests {
             bigint::{BigUint as BigUintOutput, bits_from_biguint_with_len},
             bn254::fp254impl::Fp254Impl,
         },
-        test_utils::trng,
     };
 
     fn random() -> ark_bn254::Fq6 {
-        Fq6::random(&mut trng())
+        Fq6::random(&mut OsRng)
     }
 
     // Input struct for Fq6 tests
@@ -915,7 +915,7 @@ mod tests {
         }
 
         let a = random();
-        let b = crate::gadgets::bn254::fq2::Fq2::random(&mut trng());
+        let b = crate::gadgets::bn254::fq2::Fq2::random(&mut OsRng);
         let expected = Fq6::as_montgomery(
             a * ark_bn254::Fq6::new(b, ark_bn254::Fq2::ZERO, ark_bn254::Fq2::ZERO),
         );
@@ -931,7 +931,7 @@ mod tests {
     #[test]
     fn test_fq6_mul_by_constant_fq2_montgomery() {
         let a = random();
-        let b = crate::gadgets::bn254::fq2::Fq2::random(&mut trng());
+        let b = crate::gadgets::bn254::fq2::Fq2::random(&mut OsRng);
         let expected = Fq6::as_montgomery(
             a * ark_bn254::Fq6::new(b, ark_bn254::Fq2::ZERO, ark_bn254::Fq2::ZERO),
         );
@@ -1132,8 +1132,8 @@ mod tests {
         }
 
         let a = random();
-        let c0 = crate::gadgets::bn254::fq2::Fq2::random(&mut trng());
-        let c1 = crate::gadgets::bn254::fq2::Fq2::random(&mut trng());
+        let c0 = crate::gadgets::bn254::fq2::Fq2::random(&mut OsRng);
+        let c1 = crate::gadgets::bn254::fq2::Fq2::random(&mut OsRng);
         let mut expected = a;
         expected.mul_by_01(&c0, &c1);
         let expected = Fq6::as_montgomery(expected);
@@ -1265,8 +1265,8 @@ mod tests {
         }
 
         let a = random();
-        let c0 = crate::gadgets::bn254::fq2::Fq2::random(&mut trng());
-        let c1 = crate::gadgets::bn254::fq2::Fq2::random(&mut trng());
+        let c0 = crate::gadgets::bn254::fq2::Fq2::random(&mut OsRng);
+        let c1 = crate::gadgets::bn254::fq2::Fq2::random(&mut OsRng);
         let mut expected = a;
         expected.mul_by_01(&c0, &c1);
         let expected = Fq6::as_montgomery(expected);

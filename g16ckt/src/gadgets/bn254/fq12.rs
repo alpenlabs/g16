@@ -502,6 +502,7 @@ mod tests {
 
     use ark_ff::{CyclotomicMultSubgroup, PrimeField};
     use num_bigint::BigUint;
+    use rand::rngs::OsRng;
     use test_log::test;
 
     use super::*;
@@ -514,11 +515,10 @@ mod tests {
             bigint::{BigUint as BigUintOutput, bits_from_biguint_with_len},
             bn254::{Fp254Impl, fq::Fq},
         },
-        test_utils::trng,
     };
 
     fn random() -> ark_bn254::Fq12 {
-        Fq12::random(&mut trng())
+        Fq12::random(&mut OsRng)
     }
 
     // Input struct for Fq12 tests
@@ -766,8 +766,8 @@ mod tests {
     #[test]
     fn test_fq12_mul_by_34_montgomery() {
         let a = random();
-        let c3 = Fq2::random(&mut trng());
-        let c4 = Fq2::random(&mut trng());
+        let c3 = Fq2::random(&mut OsRng);
+        let c4 = Fq2::random(&mut OsRng);
 
         // Custom input type for this complex test
         struct MulBy34Input {
@@ -867,9 +867,9 @@ mod tests {
     #[test]
     fn test_fq12_mul_by_034_montgomery() {
         let a = random();
-        let c0 = Fq2::random(&mut trng());
-        let c3 = Fq2::random(&mut trng());
-        let c4 = Fq2::random(&mut trng());
+        let c0 = Fq2::random(&mut OsRng);
+        let c3 = Fq2::random(&mut OsRng);
+        let c4 = Fq2::random(&mut OsRng);
 
         // Custom input type for this complex test
         struct MulBy034Input {
@@ -956,10 +956,9 @@ mod tests {
     #[test]
     fn test_fq12_mul_by_034_constant4_montgomery() {
         let a = random();
-        let mut rng = trng();
-        let c0 = Fq2::random(&mut rng);
-        let c3 = Fq2::random(&mut rng);
-        let c4 = Fq2::random(&mut rng);
+        let c0 = Fq2::random(&mut OsRng);
+        let c3 = Fq2::random(&mut OsRng);
+        let c4 = Fq2::random(&mut OsRng);
 
         // Custom input type for this test (c0, c3 are wires, c4 is constant)
         struct MulBy034Const4Input {
@@ -1062,7 +1061,7 @@ mod tests {
         let p = Fq::modulus_as_biguint();
         let u = (p.pow(6) - BigUint::from_str("1").unwrap())
             * (p.pow(2) + BigUint::from_str("1").unwrap());
-        let a = Fq12::random(&mut trng()).pow(u.to_u64_digits());
+        let a = Fq12::random(&mut OsRng).pow(u.to_u64_digits());
         let a_m = Fq12::as_montgomery(a);
         let mut expected_a = a;
         expected_a.cyclotomic_square_in_place();

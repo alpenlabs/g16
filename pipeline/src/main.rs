@@ -11,9 +11,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use tracing::{error, info};
-
 use run_dir::{RunDir, StepTiming, cleanup_intermediates, update_latest_symlink, write_summary};
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]

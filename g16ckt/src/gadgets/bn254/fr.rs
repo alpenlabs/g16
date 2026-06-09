@@ -139,14 +139,13 @@ impl Fr {
 #[cfg(test)]
 mod tests {
     use ark_ff::Field;
-    use rand::Rng;
+    use rand::{Rng, rngs::OsRng};
 
     use super::*;
-    use crate::test_utils::trng;
 
     fn rnd() -> ark_bn254::Fr {
         loop {
-            if let Some(bn) = ark_bn254::Fr::from_random_bytes(&trng().r#gen::<[u8; 32]>()) {
+            if let Some(bn) = ark_bn254::Fr::from_random_bytes(&OsRng.r#gen::<[u8; 32]>()) {
                 return bn;
             }
         }
