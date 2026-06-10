@@ -3,7 +3,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 fn g16_manifest() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -69,4 +69,30 @@ pub async fn verify(v5a: &Path) -> Result<bool> {
     } else {
         Ok(result.unwrap())
     }
+}
+
+pub async fn sanity_check(v5c: &Path, inputs: &Path) -> Result<()> {
+    let v5c_s = v5c
+        .to_str()
+        .context("v5c path is not valid UTF-8")?
+        .to_string();
+    let inputs_s = inputs
+        .to_str()
+        .context("inputs path is not valid UTF-8")?
+        .to_string();
+
+    let outputs = gobbletest::exec::exec(&v5c_s, &inputs_s).await;
+    if outputs.len() != 1 {
+        return Err(anyhow!(
+            "expected single output bit from verifier circuit, got {} bits: {:?}",
+            outputs.len(),
+            outputs
+        ));
+    }
+    if !outputs[0] {
+        return Err(anyhow!(
+            "verifier circuit rejected the proof (output bit = false)"
+        ));
+    }
+    Ok(())
 }

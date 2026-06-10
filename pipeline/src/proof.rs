@@ -4,9 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use num_bigint::BigUint;
 use sp1_verifier::VK_ROOT_BYTES;
 
-/// SP1 v6 standard constants. Together with the program's vkey hash they fully
-/// determine the four public-input fields the verifier circuit folds into
-/// `vk.gamma_abc_g1[0]` at compile time.
+/// SP1 v6 standard constants (used when only a vkey hash is supplied).
 const SP1_V6_EXIT_CODE: &str = "0";
 const SP1_V6_PROOF_NONCE: &str = "0";
 
@@ -15,6 +13,11 @@ pub struct CompileTimeInputs {
     pub exit_code: String,
     pub vk_root: String,
     pub proof_nonce: String,
+}
+
+pub struct RunTimeInputs {
+    pub gnark_compressed_proof: Vec<u8>,
+    pub public_values: Vec<u8>,
 }
 
 pub fn load_from_vkey_file(path: &Path) -> Result<CompileTimeInputs> {

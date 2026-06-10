@@ -8,17 +8,23 @@ name = "g16-pipeline"
 path = "src/main.rs"
 
 [dependencies]
-sp1-verifier = { version = "=6.2.0", features = ["ark"] }
+zkaleido-sp1-groth16-verifier = { git = "https://github.com/alpenlabs/zkaleido", default-features = false }
 
 ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", features = ["v5"] }
 ckt-lvl = { git = "https://github.com/alpenlabs/ckt" }
+gobbletest = { git = "https://github.com/alpenlabs/ckt" }
+
+sp1-verifier = { version = "=6.1.0", features = ["ark"] }
 
 ark-serialize = "0.5.0"
 
 num-bigint = "0.4"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+bincode = "1"
 clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
+hex = "0.4"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 monoio = { version = "0.2.4", features = ["sync"] }

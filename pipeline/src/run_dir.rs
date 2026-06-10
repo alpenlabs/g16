@@ -26,12 +26,20 @@ impl RunDir {
         self.root.join("compile_time.json")
     }
 
+    pub fn run_time_json(&self) -> PathBuf {
+        self.root.join("run_time.json")
+    }
+
     pub fn v5a_ckt(&self) -> PathBuf {
         self.root.join("g16.ckt")
     }
 
     pub fn v5c_ckt(&self) -> PathBuf {
         self.root.join("v5c.ckt")
+    }
+
+    pub fn inputs_txt(&self) -> PathBuf {
+        self.root.join("inputs.txt")
     }
 
     pub fn summary_path(&self) -> PathBuf {
@@ -92,9 +100,5 @@ pub fn cleanup_intermediates(run: &RunDir, keep: bool) -> Result<()> {
         return Ok(());
     }
     let _ = fs::remove_file(run.v5a_ckt());
-    // g16gen writes these to its cwd (= run dir); they can be tens of GB and
-    // are not reused across runs.
-    let _ = fs::remove_file(run.root.join("fanout.cache"));
-    let _ = fs::remove_file(run.root.join("outputs.cache"));
     Ok(())
 }
