@@ -1217,7 +1217,6 @@ dependencies = [
  "bitvec",
  "blake3",
  "circuit_component_macro",
- "crossbeam",
  "digest 0.10.7",
  "itertools 0.14.0",
  "num-bigint 0.4.6",

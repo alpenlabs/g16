@@ -1,9 +1,8 @@
 use std::{array, fmt::Debug};
 
-use crossbeam::channel;
 use tracing::info;
 
-use crate::{S, WireId, circuit::component_meta::ComponentMetaBuilder, core::gate_type::GateCount};
+use crate::{WireId, circuit::component_meta::ComponentMetaBuilder, core::gate_type::GateCount};
 
 mod into_wire_list;
 pub use into_wire_list::{FromWires, WiresArity, WiresObject};
@@ -114,34 +113,6 @@ impl CircuitBuilder<ExecuteMode> {
     {
         CircuitBuilder::run_streaming(inputs, ExecuteMode::with_capacity(live_wires_capacity), f)
     }
-}
-
-pub trait CiphertextHandler: Sized {
-    type Result: Default;
-
-    /// Handle next ciphertext label in stream order.
-    fn handle(&mut self, ct: S);
-    fn finalize(self) -> Self::Result;
-}
-
-pub type CiphertextSender = channel::Sender<S>;
-
-impl CiphertextHandler for CiphertextSender {
-    type Result = ();
-
-    fn handle(&mut self, ct: S) {
-        self.send(ct).unwrap();
-    }
-
-    fn finalize(self) -> Self::Result {}
-}
-
-impl CiphertextHandler for () {
-    type Result = ();
-
-    fn handle(&mut self, _ct: S) {}
-
-    fn finalize(self) -> Self::Result {}
 }
 
 impl<M: CircuitMode> CircuitBuilder<M> {

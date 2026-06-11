@@ -6,7 +6,7 @@ mod math;
 pub mod storage;
 
 // Re-export the procedural macro
-pub use core::{delta::Delta, gate::Gate, gate_type::GateType, s::S, wire::WireId};
+pub use core::{gate::Gate, gate_type::GateType, wire::WireId};
 
 pub use circuit::CircuitContext;
 pub use circuit_component_macro::component;
