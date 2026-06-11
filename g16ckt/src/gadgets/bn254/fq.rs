@@ -317,7 +317,7 @@ pub(super) mod tests {
     use std::{array, iter};
 
     use ark_ff::AdditiveGroup;
-    use rand::{Rng, SeedableRng};
+    use rand::{Rng, SeedableRng, rngs::OsRng};
     use rand_chacha::ChaCha20Rng;
     use test_log::test;
     use tracing::trace;
@@ -332,7 +332,6 @@ pub(super) mod tests {
             bigint::{BigUint as BigUintOutput, bits_from_biguint_with_len},
             bn254::fp254impl::Fp254Impl,
         },
-        test_utils::trng,
     };
 
     // Input struct for Fq tests
@@ -392,14 +391,14 @@ pub(super) mod tests {
 
     pub fn rnd() -> ark_bn254::Fq {
         loop {
-            if let Some(bn) = ark_bn254::Fq::from_random_bytes(&trng().r#gen::<[u8; 32]>()) {
+            if let Some(bn) = ark_bn254::Fq::from_random_bytes(&OsRng.r#gen::<[u8; 32]>()) {
                 return bn;
             }
         }
     }
 
     fn random() -> ark_bn254::Fq {
-        Fq::random(&mut trng())
+        Fq::random(&mut OsRng)
     }
 
     #[test]
@@ -722,7 +721,7 @@ pub(super) mod tests {
         let w = 1;
         let n = 2_usize.pow(w as u32);
         let a_val = (0..n).map(|_| random()).collect::<Vec<_>>();
-        let s_val = (0..w).map(|_| trng().r#gen()).collect::<Vec<_>>();
+        let s_val = (0..w).map(|_| OsRng.r#gen()).collect::<Vec<_>>();
 
         let mut u = 0;
         for i in s_val.iter().rev() {

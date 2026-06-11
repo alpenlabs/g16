@@ -661,14 +661,11 @@ mod tests {
     use ark_ec::{CurveGroup, PrimeGroup, VariableBaseMSM};
     use ark_ff::UniformRand;
     use ark_serialize::CanonicalSerialize;
-    use rand::{Rng, SeedableRng, thread_rng};
+    use rand::{Rng, SeedableRng, rngs::OsRng};
     use rand_chacha::ChaCha20Rng;
 
     use super::*;
-    use crate::{
-        circuit::{CircuitBuilder, CircuitInput, EncodeInput, modes::CircuitMode},
-        test_utils::trng,
-    };
+    use crate::circuit::{CircuitBuilder, CircuitInput, EncodeInput, modes::CircuitMode};
 
     pub fn rnd_fr(rng: &mut impl Rng) -> ark_bn254::Fr {
         let mut prng = ChaCha20Rng::seed_from_u64(rng.r#gen());
@@ -727,7 +724,7 @@ mod tests {
     #[test]
     fn test_g1p_add_montgomery() {
         // Generate random G1 points
-        let mut rng = thread_rng();
+        let mut rng = OsRng;
         let a = rnd_g1(&mut rng);
         let b = rnd_g1(&mut rng);
         let c = a + b;
@@ -816,7 +813,7 @@ mod tests {
     #[test]
     fn test_g1p_double_montgomery() {
         // Generate random G1 points
-        let mut rng = thread_rng();
+        let mut rng = OsRng;
         let a = rnd_g1(&mut rng);
         let c = a + a;
 
@@ -883,9 +880,9 @@ mod tests {
         let w = 2;
         let n = 2_usize.pow(w as u32);
         let a_val = (0..n)
-            .map(|_| G1Projective::as_montgomery(rnd_g1(&mut trng())))
+            .map(|_| G1Projective::as_montgomery(rnd_g1(&mut OsRng)))
             .collect::<Vec<_>>();
-        let s_val = (0..w).map(|_| trng().r#gen()).collect::<Vec<_>>();
+        let s_val = (0..w).map(|_| OsRng.r#gen()).collect::<Vec<_>>();
 
         let mut u = 0;
         for i in s_val.iter().rev() {
@@ -962,8 +959,8 @@ mod tests {
 
     #[test]
     fn test_g1p_scalar_mul_with_constant_base_montgomery() {
-        let s = rnd_fr(&mut trng());
-        let p = rnd_g1(&mut trng());
+        let s = rnd_fr(&mut OsRng);
+        let p = rnd_g1(&mut OsRng);
         let result = p * s;
 
         // Define input structure
@@ -1015,8 +1012,8 @@ mod tests {
     #[test]
     fn test_msm_with_constant_bases_montgomery() {
         let n = 1;
-        let scalars = (0..n).map(|_| rnd_fr(&mut trng())).collect::<Vec<_>>();
-        let bases = (0..n).map(|_| rnd_g1(&mut trng())).collect::<Vec<_>>();
+        let scalars = (0..n).map(|_| rnd_fr(&mut OsRng)).collect::<Vec<_>>();
+        let bases = (0..n).map(|_| rnd_g1(&mut OsRng)).collect::<Vec<_>>();
         let bases_affine = bases.iter().map(|g| g.into_affine()).collect::<Vec<_>>();
         let result = ark_bn254::G1Projective::msm(&bases_affine, &scalars).unwrap();
 
@@ -1078,7 +1075,7 @@ mod tests {
     #[test]
     fn test_g1p_neg() {
         // Generate random G1 point
-        let a = rnd_g1(&mut trng());
+        let a = rnd_g1(&mut OsRng);
         let neg_a = -a;
 
         // Convert to Montgomery form

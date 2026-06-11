@@ -464,6 +464,7 @@ mod tests {
     use std::array;
 
     use ark_ff::{AdditiveGroup, Fp6Config, PrimeField};
+    use rand::rngs::OsRng;
     use test_log::test;
 
     use super::*;
@@ -476,11 +477,10 @@ mod tests {
             bigint::{BigUint as BigUintOutput, bits_from_biguint_with_len},
             bn254::fp254impl::Fp254Impl,
         },
-        test_utils::trng,
     };
 
     fn random() -> ark_bn254::Fq2 {
-        Fq2::random(&mut trng())
+        Fq2::random(&mut OsRng)
     }
 
     #[test]

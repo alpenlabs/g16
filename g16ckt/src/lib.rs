@@ -23,16 +23,6 @@ pub use gadgets::{
 pub use logging::init_tracing;
 pub use math::*;
 
-#[cfg(test)]
-pub mod test_utils {
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha20Rng;
-
-    pub fn trng() -> ChaCha20Rng {
-        ChaCha20Rng::seed_from_u64(0)
-    }
-}
-
 // All ark-* related items live under this module for clarity
 pub mod ark {
     // Field traits and RNG utilities

@@ -131,12 +131,12 @@ impl BitXorAssign<&S> for S {
 
 #[cfg(test)]
 mod tests {
-    use rand::SeedableRng;
+    use rand::{SeedableRng, rngs::OsRng};
 
     use super::*;
 
     fn rnd() -> S {
-        S::random(&mut rand::rngs::StdRng::from_seed([0u8; 32]))
+        S::random(&mut OsRng)
     }
 
     #[test]

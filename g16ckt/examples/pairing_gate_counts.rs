@@ -16,8 +16,6 @@ use g16ckt::{
 use gsv::gadgets::bn254::{
     fq::Fq, fq2::Fq2, fq12::Fq12, g1::G1Projective, g2::G2Projective, pairing,
 };
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 
 fn fq12_one_const() -> Fq12 {
     Fq12::new_constant(ark::Fq12::ONE)
@@ -100,7 +98,6 @@ fn main() {
     const ENABLE_DESERIALIZED_COMPRESSED_G2: bool = true;
 
     // Deterministic inputs - use affine points with z=1 for fair comparison
-    let _rng = ChaCha20Rng::seed_from_u64(42);
     let g1_proj = ark::G1Projective::generator() * ark::Fr::from(5u64);
     let g2_proj = ark::G2Projective::generator() * ark::Fr::from(7u64);
     // Convert to affine then back to projective with z=1
