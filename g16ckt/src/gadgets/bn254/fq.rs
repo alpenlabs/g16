@@ -815,4 +815,9 @@ pub(super) mod tests {
             });
         assert_eq!(result.output_value.value, Fq::as_montgomery(expected_c));
     }
+
+    #[test]
+    fn test_montgomery_constants() {
+        assert!(Fq::validate_montgomery_constants());
+    }
 }
