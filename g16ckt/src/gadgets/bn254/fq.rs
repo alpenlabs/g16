@@ -81,8 +81,11 @@ impl Fp254Impl for Fq {
 
 impl Fq {
     pub fn random(rng: &mut impl Rng) -> ark_bn254::Fq {
-        let bytes: [u8; 31] = rng.r#gen();
-        ark_bn254::Fq::from_random_bytes(&bytes).unwrap()
+        loop {
+            if let Some(bytes) = ark_bn254::Fq::from_random_bytes(&rng.r#gen::<[u8; 32]>()) {
+                return bytes;
+            }
+        }
     }
 
     pub fn new_constant(u: &ark_bn254::Fq) -> Result<Fq, Error> {
