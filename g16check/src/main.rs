@@ -1,12 +1,17 @@
 use ahash::{HashMap, HashMapExt, HashSet};
-use ckt_fmtv5_types::v5::a::reader::CircuitReaderV5a;
+use ckt_fmtv5_types::v5::a::reader::{CircuitReaderV5a, verify_v5a_checksum};
 use cynosure::hints::unlikely;
 use fixedbitset::FixedBitSet;
 use indicatif::ProgressBar;
 
 #[monoio::main]
 async fn main() {
-    let mut reader = CircuitReaderV5a::open("/home/user/g16.ckt").unwrap();
+    let path = "/Users/aaron/Documents/GitHub/g16/g16.ckt"; // TODO: don't hardcode this
+    assert!(
+        verify_v5a_checksum(path).await.unwrap(),
+        "checksum verification failed"
+    );
+    let mut reader = CircuitReaderV5a::open(path).unwrap();
     let mut available_wires = FixedBitSet::with_capacity(2usize.pow(34));
     for i in 0..reader.header().primary_inputs + 2 {
         available_wires.insert(i as usize);
