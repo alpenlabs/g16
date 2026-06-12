@@ -1178,6 +1178,7 @@ dependencies = [
  "anyhow",
  "ark-serialize 0.5.0",
  "chrono",
+ "ckt-fmtv5-types",
  "ckt-lvl",
  "clap",
  "monoio",

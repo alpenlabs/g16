@@ -60,3 +60,9 @@ pub async fn prealloc_v5c(v5a: &Path, v5c: &Path) -> Result<()> {
     ckt_lvl::prealloc::prealloc(&v5a_s, &v5c_s).await;
     Ok(())
 }
+
+pub async fn verify(v5a: &Path) -> Result<bool> {
+    let result = ckt_fmtv5_types::v5::a::reader::verify_v5a_checksum(v5a).await?;
+
+    Ok(result)
+}

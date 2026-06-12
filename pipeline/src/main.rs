@@ -107,7 +107,7 @@ async fn drive_gen(vkey_path: &Path, run: &RunDir, timings: &mut Vec<StepTiming>
     });
 
     let t = Instant::now();
-    info!("step 1/2: g16gen generate");
+    info!("step 1/3: g16gen generate");
     steps::run_g16gen("generate", &run.compile_time_json(), &run.root)?;
     if !run.v5a_ckt().exists() {
         bail!("g16gen generated no v5a at {:?}", run.v5a_ckt());
@@ -118,7 +118,18 @@ async fn drive_gen(vkey_path: &Path, run: &RunDir, timings: &mut Vec<StepTiming>
     });
 
     let t = Instant::now();
-    info!("step 2/2: ckt-lvl prealloc");
+    info!("step 2/3: verify");
+    if let Ok(true) = steps::verify(&run.v5a_ckt()).await {
+        timings.push(StepTiming {
+            name: "verify",
+            duration: t.elapsed(),
+        });
+    } else {
+        bail!("verify failed for {:?}", run.v5a_ckt());
+    }
+
+    let t = Instant::now();
+    info!("step 3/3: ckt-lvl prealloc");
     steps::prealloc_v5c(&run.v5a_ckt(), &run.v5c_ckt()).await?;
     timings.push(StepTiming {
         name: "ckt-lvl-prealloc",
