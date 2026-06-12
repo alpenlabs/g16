@@ -6,9 +6,15 @@ use indicatif::ProgressBar;
 
 #[monoio::main]
 async fn main() {
-    let path = "/Users/aaron/Documents/GitHub/g16/g16.ckt"; // TODO: don't hardcode this
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 2 {
+        eprintln!("Usage: g16check path_to_file.v5a");
+        return;
+    }
+    let path = args[1].clone();
+
     assert!(
-        verify_v5a_checksum(path).await.unwrap(),
+        verify_v5a_checksum(path.clone()).await.unwrap(),
         "checksum verification failed"
     );
     let mut reader = CircuitReaderV5a::open(path).unwrap();
