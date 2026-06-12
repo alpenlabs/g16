@@ -13,7 +13,7 @@ async fn main() {
     }
     let pb = ProgressBar::new(reader.header().total_gates());
     let mut wire_map = HashMap::new();
-    let mut cur = 0;
+    let mut cur: u64 = 0;
     let always_available = reader.header().primary_inputs + 2;
     let outputs = reader.outputs().iter().copied().collect::<HashSet<_>>();
 
