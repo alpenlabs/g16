@@ -489,6 +489,8 @@ impl G2Projective {
     }
 
     /// Deserialize into G2Projective from its 64 byte serialized bit representation.
+    /// NOTE: This does not perform a prime-order subgroup check!
+    /// This is fine for the Groth16 use case, since we handle this elsewhere.
     // Follows arkworks implementation here:
     // https://github.com/arkworks-rs/algebra/blob/v0.5.0/ec/src/models/short_weierstrass/mod.rs#L145
     pub fn deserialize_checked<C: CircuitContext>(
