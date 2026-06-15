@@ -76,6 +76,7 @@ impl TranslationMode {
         path: &str,
         primary_inputs: u64,
         outputs: Vec<WireId>,
+        memo: [u8; 32],
     ) -> Self {
         let (prod, mut cons) = RingBuf::new(2usize.pow(16)).split();
         let (stop_tx, stop_rx) = bounded_async::<()>(1);
@@ -93,6 +94,7 @@ impl TranslationMode {
                         path,
                         primary_inputs,
                         outputs.into_iter().map(|w| w.0 as u64).collect(),
+                        memo,
                     )
                     .await
                     .unwrap();

@@ -92,6 +92,10 @@ impl CompileTimeData {
         );
 
         let sp1_vkey_hash: ark_bn254::Fr = self.sp1_vkey_hash.parse::<BigUint>().unwrap().into();
+        let truncated_sp1_vkey_hash_bytes =
+            self.sp1_vkey_hash.parse::<BigUint>().unwrap().to_bytes_be();
+        let mut sp1_vkey_hash_bytes = vec![0u8; 32 - truncated_sp1_vkey_hash_bytes.len()];
+        sp1_vkey_hash_bytes.extend_from_slice(&truncated_sp1_vkey_hash_bytes);
         let exit_code: ark_bn254::Fr = self.exit_code.parse::<BigUint>().unwrap().into();
         let vk_root: ark_bn254::Fr = self.vk_root.parse::<BigUint>().unwrap().into();
         let proof_nonce: ark_bn254::Fr = self.proof_nonce.parse::<BigUint>().unwrap().into();
@@ -121,6 +125,7 @@ impl CompileTimeData {
             },
             proof: gnark_proof_bits.try_into().unwrap(),
             vk,
+            vk_hash_bytes: sp1_vkey_hash_bytes.try_into().unwrap(),
             proof_type: DEFAULT_PROOF_TYPE,
         }
     }
@@ -151,6 +156,7 @@ impl RunTimeData {
         let raw_public_input: [u8; INPUT_MESSAGE_LEN] = self.raw_public_input.try_into().unwrap();
         let proof_bytes: [u8; COMPRESSED_PROOF_SIZE] = self.groth16_proof.try_into().unwrap();
         let vk = ark_groth16::VerifyingKey::default();
+        let vk_hash_bytes = [0u8; 32];
         let gnark_proof_bits: Vec<bool> = {
             let gnark_proof_bits: Vec<bool> = proof_bytes
                 .iter()
@@ -164,6 +170,7 @@ impl RunTimeData {
             },
             proof: gnark_proof_bits.try_into().unwrap(),
             vk,
+            vk_hash_bytes,
             proof_type: DEFAULT_PROOF_TYPE,
         }
     }

@@ -547,6 +547,7 @@ pub struct Groth16VerifyCompressedRawInput<const N: usize> {
     pub public: InputMessage<N>,
     pub proof: SerializedCompressedProof, // 128 byte proof
     pub vk: VerifyingKey<Bn254>,
+    pub vk_hash_bytes: [u8; 32], // raw verification key hash bytes
     pub proof_type: ProofType,
 }
 
@@ -1387,6 +1388,7 @@ mod tests {
             },
             proof: ark_proof_bits.try_into().unwrap(),
             vk,
+            vk_hash_bytes: [1u8; 32], // doesn't match the actual vk, but this is fine
             proof_type: ProofType::ARK,
         };
 
@@ -1461,6 +1463,7 @@ mod tests {
             },
             proof: ark_proof_bits.try_into().unwrap(),
             vk,
+            vk_hash_bytes: [1u8; 32], // doesn't match the actual vk, but this is fine
             proof_type: ProofType::ARK,
         };
 
@@ -1530,6 +1533,7 @@ mod tests {
             },
             proof: proof_bits.try_into().unwrap(),
             vk: vk.clone(),
+            vk_hash_bytes: [1u8; 32], // doesn't match the actual vk, but this is fine
             proof_type: ProofType::GNARK,
         };
 
