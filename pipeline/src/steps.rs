@@ -62,7 +62,11 @@ pub async fn prealloc_v5c(v5a: &Path, v5c: &Path) -> Result<()> {
 }
 
 pub async fn verify(v5a: &Path) -> Result<bool> {
-    let result = ckt_fmtv5_types::v5::a::reader::verify_v5a_checksum(v5a).await?;
+    let result = ckt_fmtv5_types::v5::a::reader::verify_v5a_checksum(v5a).await;
 
-    Ok(result)
+    if result.is_err() {
+        bail!("verification could not be completed");
+    } else {
+        Ok(result.unwrap())
+    }
 }

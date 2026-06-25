@@ -119,13 +119,22 @@ async fn drive_gen(vkey_path: &Path, run: &RunDir, timings: &mut Vec<StepTiming>
 
     let t = Instant::now();
     info!("step 2/3: verify");
-    if let Ok(true) = steps::verify(&run.v5a_ckt()).await {
-        timings.push(StepTiming {
-            name: "verify",
-            duration: t.elapsed(),
-        });
-    } else {
-        bail!("verify failed for {:?}", run.v5a_ckt());
+    match steps::verify(&run.v5a_ckt()).await {
+        Ok(true) => {
+            timings.push(StepTiming {
+                name: "verify",
+                duration: t.elapsed(),
+            });
+        }
+        Ok(false) => {
+            bail!("verification failed for {:?}", run.v5a_ckt());
+        }
+        Err(_) => {
+            bail!(
+                "verification could not be completed for {:?}",
+                run.v5a_ckt()
+            );
+        }
     }
 
     let t = Instant::now();
