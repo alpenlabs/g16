@@ -34,7 +34,7 @@ pub fn generate_component_key<'a>(
         hasher.write(param_bytes);
     }
 
-    // Extract first 8 bytes as the key
+    // Use the resulting hash output as the key
     hasher.finish().to_le_bytes()
 }
 
