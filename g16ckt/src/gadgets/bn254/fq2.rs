@@ -263,7 +263,7 @@ impl Fq2 {
         assert_eq!(a.c0().len(), Self::N_BITS / 2);
         assert_eq!(a.c1().len(), Self::N_BITS / 2);
 
-        if *b == ark_bn254::Fq2::ONE {
+        if *b == Self::as_montgomery(ark_bn254::Fq2::ONE) {
             return Fq2::from_components(a.c0().clone(), a.c1().clone());
         }
 
