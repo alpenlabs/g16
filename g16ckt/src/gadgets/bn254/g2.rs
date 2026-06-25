@@ -517,14 +517,25 @@ impl G2Projective {
             let a1 = BigIntWires {
                 bits: num2.to_vec(),
             };
+            let ignored_high_bits = BigIntWires {
+                bits: serialized_bits[Fq::N_BITS..32 * 8].to_vec(),
+            };
             let r: BigUint = ark_bn254::Fq::MODULUS.into();
             let valid_fq = {
                 let valid_a0 = bigint::less_than_constant(circuit, &a0, &r);
                 let valid_a1 = bigint::less_than_constant(circuit, &a1, &r);
-                let valid_fq = circuit.issue_wire();
+                let valid_a0_and_a1 = circuit.issue_wire();
                 circuit.add_gate(crate::Gate {
                     wire_a: valid_a0,
                     wire_b: valid_a1,
+                    wire_c: valid_a0_and_a1,
+                    gate_type: crate::GateType::And,
+                });
+                let ignored_high_bits_are_zero = bigint::equal_zero(circuit, &ignored_high_bits);
+                let valid_fq = circuit.issue_wire();
+                circuit.add_gate(crate::Gate {
+                    wire_a: valid_a0_and_a1,
+                    wire_b: ignored_high_bits_are_zero,
                     wire_c: valid_fq,
                     gate_type: crate::GateType::And,
                 });
