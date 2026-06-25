@@ -4,8 +4,10 @@ use ckt_fmtv5_types::v5::a::reader::verify_v5a_checksum;
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
-        eprintln!("Usage: verify path_to_file.v5a");
-        return;
+        panic!("incorrect number of arguments: verify path_to_file.v5a");
     }
-    assert!(verify_v5a_checksum(args[1].clone()).await.unwrap())
+    assert!(
+        verify_v5a_checksum(args[1].clone()).await.unwrap(),
+        "checksum verification failed"
+    );
 }
