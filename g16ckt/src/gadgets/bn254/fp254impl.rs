@@ -162,11 +162,18 @@ pub trait Fp254Impl {
             circuit.add_gate(Gate::xor(*a_i, TRUE_WIRE, *not_a));
         });
 
-        Self::add_constant(
+        let negated = Self::add_constant(
             circuit,
             &not_a,
             &(ark_bn254::Fq::from(1) - ark_bn254::Fq::from(Self::not_modulus_as_biguint())),
-        )
+        );
+
+        // Detect noncanonical zero encoding and make it canonical
+        let is_noncanonical_zero =
+            bigint::equal_constant(circuit, &negated, &Self::modulus_as_biguint());
+        let canonical_zero = BigIntWires::new_constant(Self::N_BITS, &BigUint::ZERO).unwrap();
+
+        bigint::select(circuit, &canonical_zero, &negated, is_noncanonical_zero)
     }
 
     /// Field doubling: (2 * a) mod p
