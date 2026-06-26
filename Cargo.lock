@@ -542,8 +542,32 @@ dependencies = [
  "ff 0.12.1",
  "group 0.12.1",
  "pairing",
- "rand_core",
+ "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "borsh"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f3f6da4992df95bbcd9af42a6c7dcb994498fc9048230405f3b36ff7cd3f145"
+dependencies = [
+ "borsh-derive",
+ "bytes",
+ "cfg_aliases",
+]
+
+[[package]]
+name = "borsh-derive"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ae8fb4fb5740e4b2c4884ff95f5f32f5e8479db1e8fd8eb49ddbe09eb09bb7c"
+dependencies = [
+ "once_cell",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -601,6 +625,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -634,7 +664,7 @@ dependencies = [
 [[package]]
 name = "ckt-fmtv5-types"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt#88c8701066787edd770acd76f928dcdf12071645"
+source = "git+https://github.com/alpenlabs/ckt#86183dbd3f4c24cf441c294835b3133d739382af"
 dependencies = [
  "blake3",
  "cynosure 0.4.0",
@@ -644,9 +674,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckt-gobble"
+version = "0.1.0"
+source = "git+https://github.com/alpenlabs/ckt#86183dbd3f4c24cf441c294835b3133d739382af"
+dependencies = [
+ "bitvec",
+ "blake3",
+ "rand_chacha 0.10.0",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "ckt-lvl"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt#88c8701066787edd770acd76f928dcdf12071645"
+source = "git+https://github.com/alpenlabs/ckt#86183dbd3f4c24cf441c294835b3133d739382af"
 dependencies = [
  "ahash",
  "ckt-fmtv5-types",
@@ -655,6 +696,27 @@ dependencies = [
  "mimalloc",
  "monoio",
  "roaring",
+]
+
+[[package]]
+name = "ckt-runner-exec"
+version = "0.1.0"
+source = "git+https://github.com/alpenlabs/ckt#86183dbd3f4c24cf441c294835b3133d739382af"
+dependencies = [
+ "anyhow",
+ "bitvec",
+ "blake3",
+ "ckt-fmtv5-types",
+ "ckt-gobble",
+ "ckt-runner-types",
+]
+
+[[package]]
+name = "ckt-runner-types"
+version = "0.1.0"
+source = "git+https://github.com/alpenlabs/ckt#86183dbd3f4c24cf441c294835b3133d739382af"
+dependencies = [
+ "ckt-fmtv5-types",
 ]
 
 [[package]]
@@ -1006,7 +1068,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d013fc25338cc558c5c2cfbad646908fb23591e2404481826742b651c9af7160"
 dependencies = [
  "bitvec",
- "rand_core",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -1019,7 +1081,7 @@ dependencies = [
  "bitvec",
  "byteorder",
  "ff_derive",
- "rand_core",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -1177,16 +1239,21 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "ark-serialize 0.5.0",
+ "bincode",
  "chrono",
  "ckt-fmtv5-types",
  "ckt-lvl",
  "clap",
+ "gobbletest",
+ "hex",
  "monoio",
  "num-bigint 0.4.6",
+ "serde",
  "serde_json",
  "sp1-verifier",
  "tracing",
  "tracing-subscriber 0.3.23",
+ "zkaleido-sp1-groth16-verifier",
 ]
 
 [[package]]
@@ -1223,7 +1290,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "rand",
- "rand_chacha",
+ "rand_chacha 0.3.1",
  "rayon",
  "serde",
  "serde_json",
@@ -1250,7 +1317,7 @@ dependencies = [
  "kanal",
  "monoio",
  "rand",
- "rand_chacha",
+ "rand_chacha 0.3.1",
  "serde",
  "serde_json",
  "tracing",
@@ -1317,6 +1384,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "gobbletest"
+version = "0.1.0"
+source = "git+https://github.com/alpenlabs/ckt#86183dbd3f4c24cf441c294835b3133d739382af"
+dependencies = [
+ "bitvec",
+ "ckt-fmtv5-types",
+ "ckt-gobble",
+ "ckt-runner-exec",
+ "ckt-runner-types",
+ "indicatif",
+ "monoio",
+ "rand_chacha 0.10.0",
+]
+
+[[package]]
 name = "group"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,7 +1406,7 @@ checksum = "5dfbfb3a6cfbd390d5c9564ab283a0349b9b9fcd46a706c1eb10e0db70bfbac7"
 dependencies = [
  "ff 0.12.1",
  "memuse",
- "rand_core",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -1335,7 +1417,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
 dependencies = [
  "ff 0.13.1",
- "rand_core",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -1358,7 +1440,7 @@ dependencies = [
  "ff 0.12.1",
  "group 0.12.1",
  "pasta_curves 0.4.1",
- "rand_core",
+ "rand_core 0.6.4",
  "rayon",
 ]
 
@@ -1551,7 +1633,7 @@ dependencies = [
  "bls12_381",
  "ff 0.12.1",
  "group 0.12.1",
- "rand_core",
+ "rand_core 0.6.4",
  "subtle",
 ]
 
@@ -1661,7 +1743,7 @@ checksum = "58c38e2799fc0978b65dfff8023ec7843e2330bb462f19198840b34b6582397d"
 dependencies = [
  "byteorder",
  "keccak",
- "rand_core",
+ "rand_core 0.6.4",
  "zeroize",
 ]
 
@@ -2184,6 +2266,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-crate"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
+dependencies = [
+ "toml_edit",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2220,8 +2311,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
 dependencies = [
  "libc",
- "rand_chacha",
- "rand_core",
+ "rand_chacha 0.3.1",
+ "rand_core 0.6.4",
 ]
 
 [[package]]
@@ -2231,7 +2322,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
- "rand_core",
+ "rand_core 0.6.4",
+]
+
+[[package]]
+name = "rand_chacha"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e6af7f3e25ded52c41df4e0b1af2d047e45896c2f3281792ed68a1c243daedb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core 0.10.1",
 ]
 
 [[package]]
@@ -2242,6 +2343,12 @@ checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.17",
 ]
+
+[[package]]
+name = "rand_core"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
 name = "range-set-blaze"
@@ -3035,9 +3142,9 @@ dependencies = [
 
 [[package]]
 name = "sp1-verifier"
-version = "6.2.0"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c2ee159035d43b7d268178c28e8a2b9433088a55434da2a57be89ef33e77195"
+checksum = "f97f6c90e5f44ffaa18e0cf7aab2f4f02d0a2261aee21d4a48e09cc453ef0e0e"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -3131,6 +3238,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "substrate-bn"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b5bbfa79abbae15dd642ea8176a21a635ff3c00059961d1ea27ad04e5b441c"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "lazy_static",
+ "rand",
+ "rustc-hex",
 ]
 
 [[package]]
@@ -3324,6 +3444,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3165f65f62e28e0115a00b2ebdd37eb6f3b641855f9d636d3cd4103767159ad7"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.25.12+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2153edc6955a6c354fad8f5efd38b6a8769bdccf9fe50f8e1329f81b0baa5d7"
+dependencies = [
+ "indexmap",
+ "toml_datetime",
+ "toml_parser",
+ "winnow",
 ]
 
 [[package]]
@@ -3812,6 +3944,9 @@ name = "winnow"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "wit-bindgen"
@@ -3866,6 +4001,29 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "zkaleido"
+version = "0.1.0"
+source = "git+https://github.com/alpenlabs/zkaleido#e8a18213448fffeb3f829c61e2f6590c5aa94b22"
+dependencies = [
+ "bincode",
+ "borsh",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "zkaleido-sp1-groth16-verifier"
+version = "0.1.0"
+source = "git+https://github.com/alpenlabs/zkaleido#e8a18213448fffeb3f829c61e2f6590c5aa94b22"
+dependencies = [
+ "blake3",
+ "sha2",
+ "substrate-bn",
+ "thiserror 2.0.18",
+ "zkaleido",
 ]
 
 [[package]]

@@ -5,7 +5,7 @@ use ark_serialize::CanonicalSerialize;
 use serde_json::json;
 use sp1_verifier::{GROTH16_VK_BYTES, load_ark_groth16_verifying_key_from_bytes};
 
-use crate::proof::CompileTimeInputs;
+use crate::proof::{CompileTimeInputs, RunTimeInputs};
 
 pub fn write_compile_time_json(out_path: &Path, compile: &CompileTimeInputs) -> Result<()> {
     let ark_vk = load_ark_groth16_verifying_key_from_bytes(&GROTH16_VK_BYTES)
@@ -21,6 +21,17 @@ pub fn write_compile_time_json(out_path: &Path, compile: &CompileTimeInputs) -> 
         "exit_code": compile.exit_code,
         "vk_root": compile.vk_root,
         "proof_nonce": compile.proof_nonce,
+    });
+
+    fs::write(out_path, serde_json::to_vec_pretty(&json)?)
+        .with_context(|| format!("failed to write {:?}", out_path))?;
+    Ok(())
+}
+
+pub fn write_run_time_json(out_path: &Path, run: &RunTimeInputs) -> Result<()> {
+    let json = json!({
+        "groth16_proof": run.gnark_compressed_proof,
+        "raw_public_input": run.public_values,
     });
 
     fs::write(out_path, serde_json::to_vec_pretty(&json)?)

@@ -1,14 +1,9 @@
 # g16-pipeline
 
-Generates a v5c boolean circuit (`v5c.ckt`) for the SP1 Groth16 verifier of a specific program, given the program's 32-byte vkey hash.
+Generates and validates v5c boolean circuits (`v5c.ckt`) for the SP1 Groth16 verifier of a specific program.
 
-The pipeline does, in order:
-
-1. Synthesize `compile_time.json` from the vkey hash + SP1 v6 standard constants.
-2. `g16gen generate` → v5a circuit (subprocess).
-3. `ckt-lvl::prealloc` → v5c circuit (in-process lib call).
-
-The resulting v5c is unvalidated by this tool — exercising it against a real proof is the responsibility of the downstream consumer.
+- **`gen --vkey`** — synthesize a v5c from the 32-byte vkey hash + SP1 v6 constants. No proof needed; the result is unvalidated.
+- **`validate-proof`** — sanity-check an existing v5c against a raw SP1 v6 prover artifact (bincode `SP1ProofWithPublicValues`, what `proof.save(...)` writes). Skips circuit generation.
 
 ## Usage
 
@@ -16,27 +11,24 @@ From the `g16/` workspace:
 
 ```sh
 cargo run -p g16-pipeline --release -- gen --vkey /path/to/vk.bin
+cargo run -p g16-pipeline --release -- validate-proof --v5c <v5c> --proof <sp1-artifact>
 ```
 
-Outputs land in `./pipeline-runs/run-YYYYMMDD-HHMMSS/`. A `pipeline-runs/latest` symlink (unix) points to the most recent successful run.
+`gen` writes to `pipeline-runs/run-YYYYMMDD-HHMMSS/`; `validate-proof` writes to `validation-runs/run-YYYYMMDD-HHMMSS/`. Each parent maintains its own `latest` symlink (unix). Override the parent with `--runs-dir` or env (`G16_PIPELINE_RUNS`, `G16_VALIDATION_RUNS`).
 
-### Flags
-
-| Flag                  | Default         | Notes                                                                                     |
-| --------------------- | --------------- | ----------------------------------------------------------------------------------------- |
-| `--vkey <path>`       | required        | Binary file containing the 32-byte SP1 program vkey hash (raw output of `bytes32_raw()`). |
-| `--runs-dir <path>`   | `pipeline-runs` | Parent directory for run folders. Env: `G16_PIPELINE_RUNS`.                               |
-| `--keep-intermediate` | off             | Keep `g16.ckt` (large v5a). Other files are kept regardless.                              |
+`gen` also takes `--keep-intermediate` (preserve `g16.ckt`, the large v5a).
 
 ### Run directory layout
 
 ```
-pipeline-runs/run-20260513-152412/
-├── v5c.ckt              ← the deliverable
-├── compile_time.json
-├── g16.ckt              ← deleted on success unless --keep-intermediate
-└── summary.txt          ← per-step durations
+pipeline-runs/run-…/      validation-runs/run-…/
+├── v5c.ckt               ├── run_time.json
+├── compile_time.json     ├── inputs.txt
+├── g16.ckt †             └── summary.txt
+└── summary.txt
 ```
+
+† deleted on success unless `--keep-intermediate`.
 
 On failure: nothing is cleaned, `latest` is not updated.
 
@@ -44,7 +36,7 @@ On failure: nothing is cleaned, `latest` is not updated.
 
 ## Requirements on the SP1 program
 
-These are properties of the verifier circuit (baked in by `g16gen`), not of the pipeline. The pipeline does not check them; the constraints surface downstream when proofs are run against the resulting circuit.
+These are properties of the verifier circuit (baked in by `g16gen`).
 
 ### `sp1-zkvm` must be built with the `blake3` feature
 
@@ -57,22 +49,24 @@ Enable the feature in the **SP1 program's** `Cargo.toml` (the guest, not the hos
 sp1-zkvm = { ..., features = ["blake3"] }
 ```
 
-This is a feature on `sp1-zkvm` (the guest entrypoint). At guest init it sets `PUBLIC_VALUES_HASHER = blake3::Hasher::new()` instead of `Sha256::new()` (`sp1-zkvm/src/lib.rs`).
-
 ### `public_values` must be exactly 36 bytes
 
-`g16gen` hard-codes `INPUT_MESSAGE_LEN = 36` (`g16gen/src/circuit_args.rs`). Programs committing a different number of bytes need a g16gen change to parameterize the input length, or the circuit they produce will not match the proof shape.
+`g16gen` hard-codes `INPUT_MESSAGE_LEN = 36` (`g16gen/src/circuit_args.rs`). `validate-proof` fails fast on a length mismatch; `gen --vkey` cannot check it.
 
-## Producing `vk.bin`
+## Producing the input files
 
-A binary file containing the 32 raw bytes of the SP1 program's verifying-key hash. This is what `sp1_sdk::HashableKey::bytes32_raw()` returns — see the [sp1-sdk docs](https://docs.rs/sp1-sdk) and the SP1 [getting-started guide](https://docs.succinct.xyz/) for setting up a prover client and `setup`-ing your ELF.
+### `vk.bin` (`gen --vkey`)
+
+A binary file containing the 32 raw bytes of `sp1_sdk::HashableKey::bytes32_raw()`:
 
 ```rust
-use sp1_sdk::{HashableKey, Prover, ProverClient, ProvingKey};
-
 let prover = ProverClient::from_env().await;
 let pk = prover.setup(MY_PROGRAM_ELF).await.unwrap();
 std::fs::write("vk.bin", pk.verifying_key().bytes32_raw()).unwrap();
 ```
 
-`setup` does not generate a proof — only deriving the verifying key — so this is fast even for large programs.
+`setup` does not generate a proof, so this is fast even for large programs.
+
+### Raw SP1 proof file (`validate-proof --proof`)
+
+The bincode artifact `SP1ProofWithPublicValues::save(...)` writes directly — no zkaleido wrapper. Either format the matching `::load(...)` accepts works (post-network or `ProofFromNetwork`). Must be `SP1ProofMode::Groth16`; other modes are rejected with a clear error.
