@@ -2,7 +2,7 @@ use std::hash::{DefaultHasher, Hasher};
 
 pub type ComponentKey = [u8; 8];
 
-/// Generate a 16-byte key from component name and optional parameters
+/// Generate an 8-byte key from component name and optional parameters
 ///
 /// This function creates a deterministic key based on:
 /// - The component's full name (typically module_path + function name)
@@ -34,7 +34,7 @@ pub fn generate_component_key<'a>(
         hasher.write(param_bytes);
     }
 
-    // Extract first 8 bytes as the key
+    // Use the resulting hash output as the key
     hasher.finish().to_le_bytes()
 }
 
