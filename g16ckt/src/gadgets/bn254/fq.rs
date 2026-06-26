@@ -3,7 +3,7 @@ use std::{
     str::FromStr,
 };
 
-use ark_ff::{Field, PrimeField};
+use ark_ff::{Field, PrimeField, UniformRand};
 use num_bigint::BigUint;
 use rand::Rng;
 
@@ -81,11 +81,7 @@ impl Fp254Impl for Fq {
 
 impl Fq {
     pub fn random(rng: &mut impl Rng) -> ark_bn254::Fq {
-        loop {
-            if let Some(bytes) = ark_bn254::Fq::from_random_bytes(&rng.r#gen::<[u8; 32]>()) {
-                return bytes;
-            }
-        }
+        ark_bn254::Fq::rand(rng)
     }
 
     pub fn new_constant(u: &ark_bn254::Fq) -> Result<Fq, Error> {
