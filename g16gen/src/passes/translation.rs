@@ -41,6 +41,7 @@ pub async fn run_translation_pass<const N: usize>(
             OUTPUT_FILE,
             primary_input_count as u64,
             output_wires.clone(),
+            inputs.vk_hash_bytes,
         )
         .await,
         inputs,
