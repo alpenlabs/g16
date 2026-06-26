@@ -40,6 +40,8 @@ pipeline-runs/run-20260513-152412/
 
 On failure: nothing is cleaned, `latest` is not updated.
 
+**Note**: Runs should not be done in parallel in the same `runs_dir` in order to avoid unexpected behavior or failed runs.
+
 ## Requirements on the SP1 program
 
 These are properties of the verifier circuit (baked in by `g16gen`), not of the pipeline. The pipeline does not check them; the constraints surface downstream when proofs are run against the resulting circuit.
