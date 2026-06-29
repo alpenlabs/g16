@@ -93,6 +93,7 @@ impl TranslationMode {
                         path,
                         primary_inputs,
                         outputs.into_iter().map(|w| w.0 as u64).collect(),
+                        [0u8; 32],
                     )
                     .await
                     .unwrap();
