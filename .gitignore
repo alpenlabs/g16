@@ -4,3 +4,5 @@
 fanout.cache
 outputs.cache
 *.ckt
+/pipeline-runs
+/counterproof-vkey.bin

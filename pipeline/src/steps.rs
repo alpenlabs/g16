@@ -61,6 +61,30 @@ pub async fn prealloc_v5c(v5a: &Path, v5c: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Write a tiny but structurally valid v5c circuit (same magic/header/block/checksum
+/// layout as a real run) so downstream tooling has a `v5c.ckt` to consume without paying
+/// for the heavy g16gen + prealloc stages. `memo` carries the 32-byte SP1 vkey hash so the
+/// dummy file still passes `verify`'s vkey-match check.
+pub async fn mock_v5c(v5c: &Path, memo: [u8; 32]) -> Result<()> {
+    use ckt_fmtv5_types::{
+        GateType,
+        v5::c::{GateV5c, WriterV5c},
+    };
+
+    let path = v5c.to_str().context("v5c path is not valid UTF-8")?;
+    let mut w = WriterV5c::new(path, /* primary_inputs */ 2, /* num_outputs */ 1, memo)
+        .await
+        .context("failed to create v5c writer")?;
+    w.write_gate(GateV5c::new(0, 1, 2), GateType::XOR).await?;
+    w.write_gate(GateV5c::new(2, 1, 3), GateType::XOR).await?;
+    w.write_gate(GateV5c::new(0, 2, 4), GateType::AND).await?;
+    w.write_gate(GateV5c::new(3, 4, 5), GateType::AND).await?;
+    w.finalize(/* scratch_space */ 1024, /* outputs */ vec![5])
+        .await
+        .context("failed to finalize v5c")?;
+    Ok(())
+}
+
 pub async fn verify(v5a: &Path) -> Result<bool> {
     let result = ckt_fmtv5_types::v5::a::reader::verify_v5a_checksum(v5a).await;
 

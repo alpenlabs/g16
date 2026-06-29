@@ -35,6 +35,9 @@ enum Cmd {
         /// Keep the v5a `g16.ckt` intermediate after success (default: delete it).
         #[arg(long)]
         keep_intermediate: bool,
+        /// Skip the heavy g16gen + prealloc stages; emit a tiny dummy v5c.ckt fast.
+        #[arg(long)]
+        mock: bool,
     },
 }
 
@@ -48,7 +51,8 @@ async fn main() {
             vkey,
             runs_dir,
             keep_intermediate,
-        } => run_gen(vkey, runs_dir, keep_intermediate).await,
+            mock,
+        } => run_gen(vkey, runs_dir, keep_intermediate, mock).await,
     };
 
     if let Err(e) = result {
@@ -57,7 +61,12 @@ async fn main() {
     }
 }
 
-async fn run_gen(vkey_path: PathBuf, runs_dir: PathBuf, keep_intermediate: bool) -> Result<()> {
+async fn run_gen(
+    vkey_path: PathBuf,
+    runs_dir: PathBuf,
+    keep_intermediate: bool,
+    mock: bool,
+) -> Result<()> {
     let total_start = Instant::now();
 
     let vkey_path = fs::canonicalize(&vkey_path)
@@ -74,7 +83,13 @@ async fn run_gen(vkey_path: PathBuf, runs_dir: PathBuf, keep_intermediate: bool)
 
     let mut timings: Vec<StepTiming> = Vec::new();
 
-    let success = match drive_gen(&vkey_path, &run, &mut timings).await {
+    let driver = if mock {
+        drive_gen_mock(&vkey_path, &run, &mut timings).await
+    } else {
+        drive_gen(&vkey_path, &run, &mut timings).await
+    };
+
+    let success = match driver {
         Ok(()) => true,
         Err(e) => {
             error!(error = %e, "pipeline failed");
@@ -94,6 +109,33 @@ async fn run_gen(vkey_path: PathBuf, runs_dir: PathBuf, keep_intermediate: bool)
     update_latest_symlink(&runs_dir, &run)?;
 
     info!(v5c = ?run.v5c_ckt(), "pipeline completed");
+    Ok(())
+}
+
+/// Fast path: produce a tiny but structurally valid v5c.ckt instead of running the real
+/// (~50 minute, ~130 GB) g16gen + verify + prealloc stages.
+async fn drive_gen_mock(
+    vkey_path: &Path,
+    run: &RunDir,
+    timings: &mut Vec<StepTiming>,
+) -> Result<()> {
+    let t = Instant::now();
+    let compile = proof::load_from_vkey_file(vkey_path)?;
+    config::write_compile_time_json(&run.compile_time_json(), &compile)?;
+    timings.push(StepTiming {
+        name: "synth-config",
+        duration: t.elapsed(),
+    });
+
+    let t = Instant::now();
+    info!("mock: writing dummy v5c");
+    let memo = proof::read_vkey_bytes(vkey_path)?;
+    steps::mock_v5c(&run.v5c_ckt(), memo).await?;
+    timings.push(StepTiming {
+        name: "mock-v5c",
+        duration: t.elapsed(),
+    });
+
     Ok(())
 }
 

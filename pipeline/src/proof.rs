@@ -17,15 +17,20 @@ pub struct CompileTimeInputs {
     pub proof_nonce: String,
 }
 
-pub fn load_from_vkey_file(path: &Path) -> Result<CompileTimeInputs> {
+/// Read and validate the raw 32-byte SP1 program vkey hash from `path`.
+pub fn read_vkey_bytes(path: &Path) -> Result<[u8; 32]> {
     let bytes = fs::read(path).with_context(|| format!("failed to read vkey file {:?}", path))?;
-    let vkey: [u8; 32] = bytes.try_into().map_err(|v: Vec<u8>| {
+    bytes.try_into().map_err(|v: Vec<u8>| {
         anyhow!(
             "expected 32-byte vkey hash in {:?}, got {} bytes",
             path,
             v.len()
         )
-    })?;
+    })
+}
+
+pub fn load_from_vkey_file(path: &Path) -> Result<CompileTimeInputs> {
+    let vkey = read_vkey_bytes(path)?;
 
     Ok(CompileTimeInputs {
         sp1_vkey_hash: BigUint::from_bytes_be(&vkey).to_string(),
