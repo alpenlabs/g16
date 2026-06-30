@@ -634,7 +634,7 @@ dependencies = [
 [[package]]
 name = "ckt-fmtv5-types"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt#a3683426d73af89e136725b0f8957f073f67cc1b"
+source = "git+https://github.com/alpenlabs/ckt?tag=v0.3.0-rc.2#a7462a1d1372f5dbf0519c61b39a2f032898edff"
 dependencies = [
  "blake3",
  "cynosure",
@@ -646,7 +646,7 @@ dependencies = [
 [[package]]
 name = "ckt-lvl"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt#a3683426d73af89e136725b0f8957f073f67cc1b"
+source = "git+https://github.com/alpenlabs/ckt?tag=v0.3.0-rc.2#a7462a1d1372f5dbf0519c61b39a2f032898edff"
 dependencies = [
  "ahash",
  "ckt-fmtv5-types",
