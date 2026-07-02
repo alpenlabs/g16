@@ -44,8 +44,7 @@ pub fn run_credits_pass<const N: usize>(
     };
     println!("Output wires: {:?}", real_output_wires);
 
-    let (mut fanout, biggest_credits_seen) = ctx.get_mut_mode().unwrap().finish();
-    println!("Biggest credits seen: {}", biggest_credits_seen);
+    let mut fanout = ctx.get_mut_mode().unwrap().finish();
     let elapsed_credits = credits_start.elapsed();
     info!(
         "Completed credits pass ({} wires) in {:?}",
