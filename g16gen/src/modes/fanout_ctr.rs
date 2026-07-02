@@ -10,7 +10,6 @@ pub struct FanoutCounter {
     fanout: Option<Vec<u32>>, // Original -> Normalized IDs
     next_normalized_id: u64,
     primary_inputs: usize,
-    biggest_fanout_seen: usize,
     spinner: ProgressBar,
 }
 
@@ -171,7 +170,6 @@ impl FanoutCounter {
             fanout: Some(Vec::new()),
             next_normalized_id: 0,
             primary_inputs,
-            biggest_fanout_seen: 0,
             spinner: pb,
         };
 
@@ -198,8 +196,7 @@ impl FanoutCounter {
         fanout[wire_id]
     }
 
-    pub fn finish(&mut self) -> (Vec<u32>, usize) {
-        let fanout = self.fanout.take().unwrap();
-        (fanout, self.biggest_fanout_seen)
+    pub fn finish(&mut self) -> Vec<u32> {
+        self.fanout.take().unwrap()
     }
 }
