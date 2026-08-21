@@ -634,10 +634,10 @@ dependencies = [
 [[package]]
 name = "ckt-fmtv5-types"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt?tag=v0.3.0-rc.2#a7462a1d1372f5dbf0519c61b39a2f032898edff"
+source = "git+https://github.com/alpenlabs/ckt?tag=v0.4.0-rc.1#5e37aed7cc8d3cbc777d124a729b609db2201b58"
 dependencies = [
  "blake3",
- "cynosure",
+ "cynosure 0.6.0",
  "kanal",
  "libc",
  "monoio",
@@ -646,7 +646,7 @@ dependencies = [
 [[package]]
 name = "ckt-lvl"
 version = "0.1.0"
-source = "git+https://github.com/alpenlabs/ckt?tag=v0.3.0-rc.2#a7462a1d1372f5dbf0519c61b39a2f032898edff"
+source = "git+https://github.com/alpenlabs/ckt?tag=v0.4.0-rc.1#5e37aed7cc8d3cbc777d124a729b609db2201b58"
 dependencies = [
  "ahash",
  "ckt-fmtv5-types",
@@ -846,8 +846,13 @@ name = "cynosure"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e288cc1b43de778225a146644ec52af11aafc1a0490dbe4b4108ef9a46002416"
+
+[[package]]
+name = "cynosure"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85ae3fe761ac97c0847c4a5af729031ad2a77bd0dab9cc24f22ad2a8c5e51d48"
 dependencies = [
- "futures",
  "monoio",
 ]
 
@@ -1189,7 +1194,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "ckt-fmtv5-types",
- "cynosure",
+ "cynosure 0.3.0",
  "fixedbitset",
  "indicatif",
  "monoio",
@@ -1238,7 +1243,7 @@ dependencies = [
  "ark-groth16",
  "ckt-fmtv5-types",
  "ckt-lvl",
- "cynosure",
+ "cynosure 0.3.0",
  "g16ckt",
  "indicatif",
  "kanal",

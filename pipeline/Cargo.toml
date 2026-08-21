@@ -10,8 +10,8 @@ path = "src/main.rs"
 [dependencies]
 sp1-verifier = { version = "=6.2.0", features = ["ark"] }
 
-ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", tag = "v0.3.0-rc.2", features = ["v5"] }
-ckt-lvl = { git = "https://github.com/alpenlabs/ckt", tag = "v0.3.0-rc.2" }
+ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", tag = "v0.4.0-rc.1", features = ["v5"] }
+ckt-lvl = { git = "https://github.com/alpenlabs/ckt", tag = "v0.4.0-rc.1" }
 
 ark-serialize = "0.5.0"
 
