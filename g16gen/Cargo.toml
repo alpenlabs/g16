@@ -5,15 +5,15 @@ edition = "2024"
 
 [dependencies]
 ahash = "0.8.12"
-ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", tag = "v0.4.0-rc.2", features = ["v5"] }
+ckt-fmtv5-types = { git = "https://github.com/alpenlabs/ckt", tag = "v0.4.0", features = ["v5"] }
 indicatif = "0.18.0"
-ckt-lvl = { git = "https://github.com/alpenlabs/ckt", tag = "v0.4.0-rc.2" }
+ckt-lvl = { git = "https://github.com/alpenlabs/ckt", tag = "v0.4.0" }
 g16ckt = { path = "../g16ckt" }
 tracing = "0.1.41"
 rand = "0.8" # using old version for consistency with ark
 rand_chacha = "0.3" # using old version for consistency with ark
 tracing-subscriber = "0.3.20"
-cynosure = { version = "0.3.0", default-features = false, features = ["ringbuf"] }
+cynosure = { version = "0.7.0", default-features = false, features = ["ringbuf"] }
 monoio = { version = "0.2.4", features = ["sync"] }
 kanal = "0.1.1"
 ark-groth16 = "0.5.0"
