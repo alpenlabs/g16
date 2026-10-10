@@ -755,18 +755,18 @@ dependencies = [
 
 [[package]]
 name = "cynosure"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e288cc1b43de778225a146644ec52af11aafc1a0490dbe4b4108ef9a46002416"
-
-[[package]]
-name = "cynosure"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85ae3fe761ac97c0847c4a5af729031ad2a77bd0dab9cc24f22ad2a8c5e51d48"
 dependencies = [
  "monoio",
 ]
+
+[[package]]
+name = "cynosure"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a8e99149c775e3301ebd207d9dbd9a33bf819bfc5d3fc8d2f5b949a48f7623"
 
 [[package]]
 name = "deepsize2"
@@ -1074,7 +1074,7 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "ckt-fmtv5-types",
- "cynosure 0.3.0",
+ "cynosure 0.7.0",
  "fixedbitset",
  "indicatif",
  "monoio",
@@ -1123,7 +1123,7 @@ dependencies = [
  "ark-groth16",
  "ckt-fmtv5-types",
  "ckt-lvl",
- "cynosure 0.3.0",
+ "cynosure 0.7.0",
  "g16ckt",
  "indicatif",
  "kanal",

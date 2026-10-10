@@ -13,7 +13,7 @@ tracing = "0.1.41"
 rand = "0.8" # using old version for consistency with ark
 rand_chacha = "0.3" # using old version for consistency with ark
 tracing-subscriber = "0.3.20"
-cynosure = { version = "0.3.0", default-features = false, features = ["ringbuf"] }
+cynosure = { version = "0.7.0", default-features = false, features = ["ringbuf"] }
 monoio = { version = "0.2.4", features = ["sync"] }
 kanal = "0.1.1"
 ark-groth16 = "0.5.0"
