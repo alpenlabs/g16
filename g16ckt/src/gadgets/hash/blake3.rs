@@ -653,3 +653,132 @@ mod test {
         }
     }
 }
+
+/// Gate cost of the gadget as garbled, i.e. after g16gen translates every gate into v5 AND/XOR.
+#[cfg(test)]
+mod gate_cost {
+    use std::collections::HashSet;
+
+    use super::{InputMessageWires, blake3_hash};
+    use crate::{
+        CircuitContext, Gate, GateType, WireId,
+        circuit::{FromWires, WiresObject, modes::ExecuteMode},
+    };
+
+    /// Records emitted gates without evaluating them.
+    struct GateRecorder {
+        next_wire: usize,
+        gates: Vec<Gate>,
+    }
+
+    impl CircuitContext for GateRecorder {
+        type Mode = ExecuteMode;
+
+        fn issue_wire(&mut self) -> WireId {
+            let w = WireId(self.next_wire);
+            self.next_wire += 1;
+            w
+        }
+
+        fn add_gate(&mut self, gate: Gate) {
+            self.gates.push(gate);
+        }
+
+        fn with_named_child<I: WiresObject, O: FromWires>(
+            &mut self,
+            _key: [u8; 8],
+            inputs: I,
+            f: impl Fn(&mut Self, &I) -> O,
+            _arity: usize,
+        ) -> O {
+            f(self, &inputs)
+        }
+    }
+
+    /// (AND, XOR) gates emitted by g16gen's translation of each source gate type.
+    fn v5_cost(gate_type: GateType) -> (u64, u64) {
+        match gate_type {
+            GateType::And => (1, 0),
+            GateType::Xor | GateType::Not => (0, 1),
+            GateType::Xnor => (0, 2),
+            GateType::Nand | GateType::Nimp | GateType::Ncimp => (1, 1),
+            GateType::Or => (1, 2),
+            GateType::Nor | GateType::Imp | GateType::Cimp => (1, 3),
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct Cost {
+        /// v5 AND gates, i.e. 16-byte ciphertexts under privacy-free half-gates
+        and: u64,
+        /// all v5 gates
+        total: u64,
+        /// gate outputs never read and not part of the hash, which ckt-lvl never frees
+        unread: usize,
+    }
+
+    fn cost<const N: usize>() -> Cost {
+        // wires 0 and 1 are the FALSE/TRUE constants
+        let mut rec = GateRecorder {
+            next_wire: 2,
+            gates: Vec::new(),
+        };
+        let input = InputMessageWires::<N>::new(|| rec.issue_wire());
+        let output: HashSet<WireId> = blake3_hash(&mut rec, input)
+            .to_wires_vec()
+            .into_iter()
+            .collect();
+
+        let (mut and, mut xor) = (0, 0);
+        let mut read = HashSet::new();
+        for gate in &rec.gates {
+            let (a, x) = v5_cost(gate.gate_type);
+            and += a;
+            xor += x;
+            read.insert(gate.wire_a);
+            if gate.gate_type != GateType::Not {
+                read.insert(gate.wire_b);
+            }
+        }
+        let unread = rec
+            .gates
+            .iter()
+            .filter(|g| !read.contains(&g.wire_c) && !output.contains(&g.wire_c))
+            .count();
+
+        Cost {
+            and,
+            total: and + xor,
+            unread,
+        }
+    }
+
+    #[test]
+    fn test_gate_cost() {
+        // 36 bytes is the SP1 public-values length hashed by the Groth16 verifier
+        let costs = [cost::<36>(), cost::<64>(), cost::<65>(), cost::<1024>()];
+        let expected = [
+            Cost {
+                and: 10848,
+                total: 61728,
+                unread: 592,
+            },
+            Cost {
+                and: 10848,
+                total: 61728,
+                unread: 592,
+            },
+            Cost {
+                and: 21632,
+                total: 123264,
+                unread: 1184,
+            },
+            Cost {
+                and: 172608,
+                total: 984768,
+                unread: 9472,
+            },
+        ];
+        assert_eq!(costs, expected);
+    }
+}
