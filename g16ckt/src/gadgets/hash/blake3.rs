@@ -12,9 +12,10 @@ use num_bigint::BigUint;
 use crate::{
     CircuitContext, Gate, WireId,
     circuit::{
-        CircuitInput, CircuitMode, CircuitOutput, EncodeInput, ExecuteMode, FALSE_WIRE, WiresObject,
+        CircuitInput, CircuitMode, CircuitOutput, EncodeInput, ExecuteMode, FALSE_WIRE, TRUE_WIRE,
+        WiresObject,
     },
-    gadgets::{basic::full_adder, bigint::BigIntWires},
+    gadgets::bigint::BigIntWires,
 };
 
 const OUT_LEN: usize = 32;
@@ -24,6 +25,113 @@ const CHUNK_LEN: usize = 1024;
 const CHUNK_START: u32 = 1 << 0;
 const CHUNK_END: u32 = 1 << 1;
 const ROOT: u32 = 1 << 3;
+
+// Bit-level helpers that fold constant inputs instead of emitting gates.
+//
+// Much of the BLAKE3 state is known when the circuit is built: the IV, counter, block length,
+// flags and zero padding. Since g16gen translates every gate into v5 AND/XOR, these helpers emit
+// only `And` and `Xor` gates, with negation as XOR against `TRUE_WIRE`.
+
+fn as_constant(w: WireId) -> Option<bool> {
+    match w {
+        FALSE_WIRE => Some(false),
+        TRUE_WIRE => Some(true),
+        _ => None,
+    }
+}
+
+fn constant(b: bool) -> WireId {
+    if b { TRUE_WIRE } else { FALSE_WIRE }
+}
+
+fn not_bit<C: CircuitContext>(circuit: &mut C, a: WireId) -> WireId {
+    match as_constant(a) {
+        Some(a) => constant(!a),
+        None => {
+            let res = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(a, TRUE_WIRE, res));
+            res
+        }
+    }
+}
+
+fn xor_bit<C: CircuitContext>(circuit: &mut C, a: WireId, b: WireId) -> WireId {
+    match (as_constant(a), as_constant(b)) {
+        (Some(a), Some(b)) => constant(a ^ b),
+        (Some(false), None) => b,
+        (None, Some(false)) => a,
+        (Some(true), None) => not_bit(circuit, b),
+        (None, Some(true)) => not_bit(circuit, a),
+        (None, None) if a == b => FALSE_WIRE,
+        (None, None) => {
+            let res = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(a, b, res));
+            res
+        }
+    }
+}
+
+fn and_bit<C: CircuitContext>(circuit: &mut C, a: WireId, b: WireId) -> WireId {
+    match (as_constant(a), as_constant(b)) {
+        (Some(a), Some(b)) => constant(a & b),
+        (Some(false), None) | (None, Some(false)) => FALSE_WIRE,
+        (Some(true), None) => b,
+        (None, Some(true)) => a,
+        (None, None) if a == b => a,
+        (None, None) => {
+            let res = circuit.issue_wire();
+            circuit.add_gate(Gate::and(a, b, res));
+            res
+        }
+    }
+}
+
+/// Full adder returning (sum, carry), with at most one AND gate.
+fn add_bits<C: CircuitContext>(
+    circuit: &mut C,
+    a: WireId,
+    b: WireId,
+    c: WireId,
+) -> (WireId, WireId) {
+    let inputs = [a, b, c];
+    let constants: Vec<bool> = inputs.iter().filter_map(|&w| as_constant(w)).collect();
+    let wires: Vec<WireId> = inputs
+        .into_iter()
+        .filter(|&w| as_constant(w).is_none())
+        .collect();
+
+    match (constants.as_slice(), wires.as_slice()) {
+        // No gates: all inputs are constant
+        (&[a, b, c], []) => (constant(a ^ b ^ c), constant((a & b) | (c & (a ^ b)))),
+        // At most one NOT: majority(k, k, x) = k and majority(0, 1, x) = x
+        (&[k1, k2], &[x]) => {
+            let sum = if k1 ^ k2 { not_bit(circuit, x) } else { x };
+            let carry = if k1 == k2 { constant(k1) } else { x };
+            (sum, carry)
+        }
+        // majority(0, x, y) = x & y and majority(1, x, y) = x | y = (x ^ y) ^ (x & y)
+        (&[k], &[x, y]) => {
+            let x_xor_y = xor_bit(circuit, x, y);
+            let x_and_y = and_bit(circuit, x, y);
+            if k {
+                (
+                    not_bit(circuit, x_xor_y),
+                    xor_bit(circuit, x_xor_y, x_and_y),
+                )
+            } else {
+                (x_xor_y, x_and_y)
+            }
+        }
+        // carry = c ^ ((a ^ c) & (b ^ c))
+        _ => {
+            let a_xor_c = xor_bit(circuit, a, c);
+            let b_xor_c = xor_bit(circuit, b, c);
+            let sum = xor_bit(circuit, a, b_xor_c);
+            let t = and_bit(circuit, a_xor_c, b_xor_c);
+            (sum, xor_bit(circuit, c, t))
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct U32([WireId; 32]);
@@ -37,14 +145,7 @@ impl U32 {
     }
 
     fn xor<C: CircuitContext>(circuit: &mut C, a: U32, b: U32) -> U32 {
-        let c: Vec<WireId> = (0..32)
-            .map(|i| {
-                let res = circuit.issue_wire();
-                circuit.add_gate(Gate::xor(a.0[i], b.0[i], res));
-                res
-            })
-            .collect();
-        U32(c.try_into().unwrap())
+        U32(array::from_fn(|i| xor_bit(circuit, a.0[i], b.0[i])))
     }
 
     fn rotate_right(value: U32, n: u32) -> U32 {
@@ -65,13 +166,11 @@ impl U32 {
         let mut carry = FALSE_WIRE;
 
         for (i, result_i) in result.iter_mut().take(31).enumerate() {
-            (*result_i, carry) = full_adder(circuit, a.0[i], b.0[i], carry);
+            (*result_i, carry) = add_bits(circuit, a.0[i], b.0[i], carry);
         }
         // The carry out of the top bit is discarded, so only its sum is computed
-        let axb = circuit.issue_wire();
-        circuit.add_gate(Gate::xor(a.0[31], b.0[31], axb));
-        result[31] = circuit.issue_wire();
-        circuit.add_gate(Gate::xor(axb, carry, result[31]));
+        let a_xor_b = xor_bit(circuit, a.0[31], b.0[31]);
+        result[31] = xor_bit(circuit, a_xor_b, carry);
 
         U32(result)
     }
@@ -728,10 +827,10 @@ mod gate_cost {
         let costs = [cost::<36>(), cost::<64>(), cost::<65>(), cost::<1024>()]
             .map(|c| (c.and, c.total, c.unread));
         let expected = [
-            (10416, 60176, 0),
-            (10416, 60176, 0),
-            (20832, 120352, 0),
-            (166656, 962816, 0),
+            (8762, 50323, 0),
+            (10281, 57868, 0),
+            (17436, 100013, 0),
+            (166431, 939943, 0),
         ];
         assert_eq!(costs, expected);
     }
