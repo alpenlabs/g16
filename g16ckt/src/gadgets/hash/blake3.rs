@@ -4,7 +4,7 @@
 //! Implementation referenced from: https://github.com/BLAKE3-team/BLAKE3/blob/master/reference_impl/reference_impl.rs
 //! Test Vector referenced from: https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json
 
-use core::cmp::min;
+use core::{array, cmp::min};
 
 use ark_std::iter;
 use num_bigint::BigUint;
@@ -47,17 +47,6 @@ impl U32 {
         U32(c.try_into().unwrap())
     }
 
-    fn or<C: CircuitContext>(circuit: &mut C, a: U32, b: U32) -> U32 {
-        let c: Vec<WireId> = (0..32)
-            .map(|i| {
-                let res = circuit.issue_wire();
-                circuit.add_gate(Gate::or(a.0[i], b.0[i], res));
-                res
-            })
-            .collect();
-        U32(c.try_into().unwrap())
-    }
-
     fn rotate_right(value: U32, n: u32) -> U32 {
         let mut result = [FALSE_WIRE; 32];
         let shift = (n % 32) as usize;
@@ -75,11 +64,14 @@ impl U32 {
         let mut result = [FALSE_WIRE; 32];
         let mut carry = FALSE_WIRE;
 
-        for (i, result_i) in result.iter_mut().enumerate() {
-            let ai = a.0[i];
-            let bi = b.0[i];
-            (*result_i, carry) = full_adder(circuit, ai, bi, carry);
+        for (i, result_i) in result.iter_mut().take(31).enumerate() {
+            (*result_i, carry) = full_adder(circuit, a.0[i], b.0[i], carry);
         }
+        // The carry out of the top bit is discarded, so only its sum is computed
+        let axb = circuit.issue_wire();
+        circuit.add_gate(Gate::xor(a.0[31], b.0[31], axb));
+        result[31] = circuit.issue_wire();
+        circuit.add_gate(Gate::xor(axb, carry, result[31]));
 
         U32(result)
     }
@@ -273,9 +265,9 @@ fn compress<C: CircuitContext>(
     chaining_value: &[U32; 8],
     block_words: &[U32; 16],
     counter: u64,
-    block_len: U32,
-    flags: U32,
-) -> [U32; 16] {
+    block_len: u32,
+    flags: u32,
+) -> [U32; 8] {
     let counter_low = U32::from_constant(counter as u32);
     let counter_high = U32::from_constant((counter >> 32) as u32);
     #[rustfmt::skip]
@@ -295,8 +287,8 @@ fn compress<C: CircuitContext>(
         iv[3],
         counter_low,
         counter_high,
-        block_len,
-        flags,
+        U32::from_constant(block_len),
+        U32::from_constant(flags),
     ];
 
     let mut block = *block_words;
@@ -315,15 +307,9 @@ fn compress<C: CircuitContext>(
     permute(&mut block);
     round(circuit, &mut state, &block); // round 7
 
-    for i in 0..8 {
-        state[i] = U32::xor(circuit, state[i], state[i + 8]);
-        state[i + 8] = U32::xor(circuit, state[i + 8], chaining_value[i]);
-    }
-    state
-}
-
-fn first_8_words(compression_output: [U32; 16]) -> [U32; 8] {
-    compression_output[0..8].try_into().unwrap()
+    // Only the first 8 output words are needed: they are both the chaining value and the 32-byte
+    // hash, so the second half (state[i + 8] ^ chaining_value[i]) is never computed.
+    array::from_fn(|i| U32::xor(circuit, state[i], state[i + 8]))
 }
 
 fn words_from_little_endian_bytes(bytes: &[U8], words: &mut [U32]) {
@@ -338,28 +324,23 @@ fn words_from_little_endian_bytes(bytes: &[U8], words: &mut [U32]) {
 struct Output {
     input_chaining_value: [U32; 8],
     block_words: [U32; 16],
-    block_len: U32,
-    flags: U32,
+    block_len: u32,
+    flags: u32,
 }
 
 impl Output {
-    fn root_output_bytes<C: CircuitContext>(&self, circuit: &mut C, out_slice: &mut [U8]) {
-        let root = U32::from_constant(ROOT);
-        for (output_block_counter, out_block) in out_slice.chunks_mut(2 * OUT_LEN).enumerate() {
-            let flags = U32::or(circuit, self.flags, root);
-            let words = compress(
-                circuit,
-                &self.input_chaining_value,
-                &self.block_words,
-                output_block_counter as u64,
-                self.block_len,
-                flags,
-            );
-            for (word_bits, out_word_bits) in words.iter().zip(out_block.chunks_mut(4)) {
-                for (i, byte_bits) in out_word_bits.iter_mut().enumerate() {
-                    let arr: U8 = U8(word_bits.0[8 * i..(i + 1) * 8].try_into().unwrap());
-                    *byte_bits = arr;
-                }
+    fn root_output_bytes<C: CircuitContext>(&self, circuit: &mut C, out: &mut [U8; OUT_LEN]) {
+        let words = compress(
+            circuit,
+            &self.input_chaining_value,
+            &self.block_words,
+            0,
+            self.block_len,
+            self.flags | ROOT,
+        );
+        for (word_bits, out_word_bits) in words.iter().zip(out.chunks_mut(4)) {
+            for (i, byte_bits) in out_word_bits.iter_mut().enumerate() {
+                *byte_bits = U8(word_bits.0[8 * i..(i + 1) * 8].try_into().unwrap());
             }
         }
     }
@@ -371,11 +352,11 @@ struct ChunkState {
     block: [U8; BLOCK_LEN],
     block_len: u8,
     blocks_compressed: u8,
-    flags: U32,
+    flags: u32,
 }
 
 impl ChunkState {
-    fn new(key_words: [U32; 8], chunk_counter: u64, flags: U32) -> Self {
+    fn new(key_words: [U32; 8], chunk_counter: u64, flags: u32) -> Self {
         Self {
             chaining_value: key_words,
             chunk_counter,
@@ -390,35 +371,30 @@ impl ChunkState {
         BLOCK_LEN * self.blocks_compressed as usize + self.block_len as usize
     }
 
-    fn start_flag(&self) -> U32 {
-        let r = if self.blocks_compressed == 0 {
+    fn start_flag(&self) -> u32 {
+        if self.blocks_compressed == 0 {
             CHUNK_START
         } else {
             0
-        };
-        U32::from_constant(r)
+        }
     }
 
     fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[U8]) {
         let zero_gate = FALSE_WIRE;
-        let block_len = U32::from_constant(BLOCK_LEN as u32);
         while !input.is_empty() {
             // If the block buffer is full, compress it and clear it. More
             // input is coming, so this compression is not CHUNK_END.
             if self.block_len as usize == BLOCK_LEN {
                 let mut block_words = [U32([zero_gate; 32]); 16];
                 words_from_little_endian_bytes(&self.block, &mut block_words);
-                let start_flag = self.start_flag();
-                let flags = U32::or(circuit, self.flags, start_flag);
-                let cmp = compress(
+                self.chaining_value = compress(
                     circuit,
                     &self.chaining_value,
                     &block_words,
                     self.chunk_counter,
-                    block_len,
-                    flags,
+                    BLOCK_LEN as u32,
+                    self.flags | self.start_flag(),
                 );
-                self.chaining_value = first_8_words(cmp);
                 self.blocks_compressed += 1;
                 self.block = [U8([zero_gate; 8]); BLOCK_LEN];
                 self.block_len = 0;
@@ -433,20 +409,16 @@ impl ChunkState {
         }
     }
 
-    fn output<C: CircuitContext>(&self, circuit: &mut C) -> Output {
+    fn output(&self) -> Output {
         let zero_gate = FALSE_WIRE;
         let mut block_words = [U32([zero_gate; 32]); 16];
         words_from_little_endian_bytes(&self.block, &mut block_words);
-        let start_flag = self.start_flag();
-        let flags = U32::or(circuit, self.flags, start_flag);
-        let chunk_end = U32::from_constant(CHUNK_END);
-        let flags = U32::or(circuit, flags, chunk_end);
 
         Output {
             input_chaining_value: self.chaining_value,
             block_words,
-            block_len: U32::from_constant(self.block_len as u32),
-            flags,
+            block_len: self.block_len as u32,
+            flags: self.flags | self.start_flag() | CHUNK_END,
         }
     }
 }
@@ -457,7 +429,7 @@ pub(crate) struct Hasher {
 }
 
 impl Hasher {
-    fn new_internal(key_words: [U32; 8], flags: U32) -> Self {
+    fn new_internal(key_words: [U32; 8], flags: u32) -> Self {
         Self {
             chunk_state: ChunkState::new(key_words, 0, flags),
         }
@@ -465,10 +437,7 @@ impl Hasher {
 
     /// Construct a new `Hasher` for the regular hash function.
     pub(crate) fn new() -> Self {
-        let zero_gate = FALSE_WIRE;
-        let iv = get_iv();
-        let zero = U32([zero_gate; 32]);
-        Self::new_internal(iv, zero)
+        Self::new_internal(get_iv(), 0)
     }
 
     /// Add input to the hash state.
@@ -482,10 +451,9 @@ impl Hasher {
         }
     }
 
-    /// Finalize the hash and write any number of output bytes.
-    fn finalize<C: CircuitContext>(&self, circuit: &mut C, out_slice: &mut [U8]) {
-        let output = self.chunk_state.output(circuit);
-        output.root_output_bytes(circuit, out_slice);
+    /// Finalize the hash and write the 32-byte output.
+    fn finalize<C: CircuitContext>(&self, circuit: &mut C, out: &mut [U8; OUT_LEN]) {
+        self.chunk_state.output().root_output_bytes(circuit, out);
     }
 }
 
@@ -501,7 +469,7 @@ pub fn blake3_hash<const N: usize, C: CircuitContext>(
     let mut hasher = Hasher::new();
     hasher.update(circuit, &input_message_bytes.byte_arr);
 
-    let mut hash = [U8([FALSE_WIRE; 8]); 32];
+    let mut hash = [U8([FALSE_WIRE; 8]); OUT_LEN];
     hasher.finalize(circuit, &mut hash);
     HashOutputWires { value: hash }
 }
@@ -756,28 +724,14 @@ mod gate_cost {
     #[test]
     fn test_gate_cost() {
         // 36 bytes is the SP1 public-values length hashed by the Groth16 verifier
-        let costs = [cost::<36>(), cost::<64>(), cost::<65>(), cost::<1024>()];
+        // (AND, total, unread) for message lengths 36, 64, 65 and 1024
+        let costs = [cost::<36>(), cost::<64>(), cost::<65>(), cost::<1024>()]
+            .map(|c| (c.and, c.total, c.unread));
         let expected = [
-            Cost {
-                and: 10848,
-                total: 61728,
-                unread: 592,
-            },
-            Cost {
-                and: 10848,
-                total: 61728,
-                unread: 592,
-            },
-            Cost {
-                and: 21632,
-                total: 123264,
-                unread: 1184,
-            },
-            Cost {
-                and: 172608,
-                total: 984768,
-                unread: 9472,
-            },
+            (10416, 60176, 0),
+            (10416, 60176, 0),
+            (20832, 120352, 0),
+            (166656, 962816, 0),
         ];
         assert_eq!(costs, expected);
     }
