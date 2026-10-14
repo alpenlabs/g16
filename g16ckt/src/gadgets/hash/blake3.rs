@@ -579,7 +579,8 @@ mod test {
     use std::{fs::File, io::BufReader, str::FromStr};
 
     use blake3::CHUNK_LEN;
-    use rand::Rng;
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
 
     use super::blake3_hash;
     use crate::{
@@ -605,10 +606,21 @@ mod test {
     #[test]
     fn test_blake3_hash_for_finite_len_random_input() {
         let mut byte_arr = [0u8; 32];
-        rand::thread_rng().try_fill(&mut byte_arr[..]).unwrap();
+        ChaCha20Rng::seed_from_u64(32).fill(&mut byte_arr[..]);
 
         let inputs = InputMessage { byte_arr };
         validate_blake3_hash_for_input(inputs);
+    }
+
+    // 36 bytes is the length of the SP1 public values hashed by the Groth16 verifier
+    #[test]
+    fn test_blake3_hash_for_sp1_public_values_len_random_input() {
+        let mut rng = ChaCha20Rng::seed_from_u64(36);
+        for _ in 0..8 {
+            let mut byte_arr = [0u8; 36];
+            rng.fill(&mut byte_arr[..]);
+            validate_blake3_hash_for_input(InputMessage { byte_arr });
+        }
     }
 
     #[test]
