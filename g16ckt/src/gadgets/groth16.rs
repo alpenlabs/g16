@@ -1476,8 +1476,14 @@ mod tests {
         assert!(out.output_value[0]);
     }
 
-    #[test]
-    fn test_groth16_verify_compressed_true_small_using_mock_sp1_proof_in_gnark_format() {
+    // Fibonacci public values committed by the mock SP1 gnark proof below
+    const MOCK_SP1_RAW_PUBLIC_INPUT: [u8; 36] = [
+        55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0, 55,
+        0, 0, 0, 89, 0, 0, 0,
+    ];
+
+    /// Verifies the mock SP1 gnark proof against the given public values in the circuit
+    fn verify_mock_sp1_gnark_proof(raw_public_input: [u8; 36]) -> bool {
         let proof_bytes: [u8; 128] = [
             170, 12, 19, 111, 213, 193, 180, 194, 24, 97, 133, 134, 142, 65, 68, 80, 167, 234, 134,
             227, 122, 69, 42, 179, 185, 45, 72, 68, 52, 31, 126, 55, 142, 161, 94, 118, 133, 222,
@@ -1491,11 +1497,6 @@ mod tests {
             .iter()
             .flat_map(|&b| (0..8).map(move |i| ((b >> i) & 1) == 1))
             .collect();
-
-        let raw_public_input: [u8; 36] = [
-            55, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 21, 0, 0, 0, 34, 0, 0, 0,
-            55, 0, 0, 0, 89, 0, 0, 0,
-        ];
 
         let vk_bytes: [u8; 328] = [
             226, 242, 109, 190, 162, 153, 245, 34, 59, 100, 108, 177, 251, 51, 234, 219, 5, 157,
@@ -1543,6 +1544,20 @@ mod tests {
                 vec![ok]
             });
 
-        assert!(out.output_value[0]);
+        out.output_value[0]
+    }
+
+    #[test]
+    fn test_groth16_verify_compressed_true_small_using_mock_sp1_proof_in_gnark_format() {
+        assert!(verify_mock_sp1_gnark_proof(MOCK_SP1_RAW_PUBLIC_INPUT));
+    }
+
+    // The public values are hashed with BLAKE3 inside the circuit, so altering a single bit
+    // must change the derived public input and make verification fail
+    #[test]
+    fn test_groth16_verify_compressed_false_small_using_mock_sp1_proof_with_altered_public_input() {
+        let mut raw_public_input = MOCK_SP1_RAW_PUBLIC_INPUT;
+        raw_public_input[35] ^= 1;
+        assert!(!verify_mock_sp1_gnark_proof(raw_public_input));
     }
 }
