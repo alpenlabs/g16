@@ -5,19 +5,19 @@
 //! and is not used by the Groth16 verifier, so it does not change the production circuit.
 //!
 //! It shares the input and output types of [`super::blake3`], and has the same restriction to
-//! messages of at most 1024 bytes.
+//! messages of at most 1024 bytes. Unlike [`super::blake3`], it hashes an empty message to the
+//! correct digest as constant output wires, `TRUE_WIRE` and `FALSE_WIRE`, rather than gate
+//! outputs, since no input wire is involved. Code that uses the hash inside a component must not
+//! fold on these constants; see the bit helpers below.
 //! Implementation referenced from: https://github.com/BLAKE3-team/BLAKE3/blob/master/reference_impl/reference_impl.rs
 //! Test Vector referenced from: https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json
 
 use core::{array, cmp::min};
 
-use num_bigint::BigUint;
-
 use super::blake3::{HashOutputWires, InputMessageWires, U8};
 use crate::{
     CircuitContext, Gate, WireId,
-    circuit::FALSE_WIRE,
-    gadgets::{basic::full_adder, bigint::BigIntWires},
+    circuit::{FALSE_WIRE, TRUE_WIRE},
 };
 
 const OUT_LEN: usize = 32;
@@ -28,30 +28,134 @@ const CHUNK_START: u32 = 1 << 0;
 const CHUNK_END: u32 = 1 << 1;
 const ROOT: u32 = 1 << 3;
 
+// Bit-level helpers that fold constant inputs instead of emitting gates.
+//
+// Much of the BLAKE3 state is known when the circuit is built: the IV, counter, block length,
+// flags and zero padding. Since g16gen translates every gate into v5 AND/XOR, these helpers emit
+// only `And` and `Xor` gates, with negation as XOR against `TRUE_WIRE`.
+//
+// Only the gadget's own constants are folded, tracked as `Bit::Const`. Input wires are always
+// `Bit::Wire`, even when they are `TRUE_WIRE` or `FALSE_WIRE`, and two wires are never folded
+// even when they are the same wire. StreamingMode builds a component's credit template from fresh,
+// distinct, nonconstant mock inputs, so the emitted gates must not depend on which wires are passed
+// in.
+
 #[derive(Debug, Clone, Copy)]
-struct U32([WireId; 32]);
+enum Bit {
+    Const(bool),
+    Wire(WireId),
+}
+
+impl Bit {
+    fn as_constant(self) -> Option<bool> {
+        match self {
+            Bit::Const(b) => Some(b),
+            Bit::Wire(_) => None,
+        }
+    }
+
+    fn to_wire(self) -> WireId {
+        match self {
+            Bit::Const(false) => FALSE_WIRE,
+            Bit::Const(true) => TRUE_WIRE,
+            Bit::Wire(w) => w,
+        }
+    }
+}
+
+fn not_bit<C: CircuitContext>(circuit: &mut C, a: Bit) -> Bit {
+    match a {
+        Bit::Const(a) => Bit::Const(!a),
+        Bit::Wire(a) => {
+            let res = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(a, TRUE_WIRE, res));
+            Bit::Wire(res)
+        }
+    }
+}
+
+fn xor_bit<C: CircuitContext>(circuit: &mut C, a: Bit, b: Bit) -> Bit {
+    match (a, b) {
+        (Bit::Const(a), Bit::Const(b)) => Bit::Const(a ^ b),
+        (Bit::Const(false), w) | (w, Bit::Const(false)) => w,
+        (Bit::Const(true), w) | (w, Bit::Const(true)) => not_bit(circuit, w),
+        (Bit::Wire(a), Bit::Wire(b)) => {
+            let res = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(a, b, res));
+            Bit::Wire(res)
+        }
+    }
+}
+
+fn and_bit<C: CircuitContext>(circuit: &mut C, a: Bit, b: Bit) -> Bit {
+    match (a, b) {
+        (Bit::Const(a), Bit::Const(b)) => Bit::Const(a & b),
+        (Bit::Const(false), _) | (_, Bit::Const(false)) => Bit::Const(false),
+        (Bit::Const(true), w) | (w, Bit::Const(true)) => w,
+        (Bit::Wire(a), Bit::Wire(b)) => {
+            let res = circuit.issue_wire();
+            circuit.add_gate(Gate::and(a, b, res));
+            Bit::Wire(res)
+        }
+    }
+}
+
+/// Full adder returning (sum, carry), with at most one AND gate.
+fn add_bits<C: CircuitContext>(circuit: &mut C, a: Bit, b: Bit, c: Bit) -> (Bit, Bit) {
+    let inputs = [a, b, c];
+    let constants: Vec<bool> = inputs.iter().filter_map(|w| w.as_constant()).collect();
+    let wires: Vec<Bit> = inputs
+        .into_iter()
+        .filter(|w| w.as_constant().is_none())
+        .collect();
+
+    match (constants.as_slice(), wires.as_slice()) {
+        // No gates: all inputs are constant
+        (&[a, b, c], []) => (Bit::Const(a ^ b ^ c), Bit::Const((a & b) | (c & (a ^ b)))),
+        // At most one NOT: majority(k, k, x) = k and majority(0, 1, x) = x
+        (&[k1, k2], &[x]) => {
+            let sum = if k1 ^ k2 { not_bit(circuit, x) } else { x };
+            let carry = if k1 == k2 { Bit::Const(k1) } else { x };
+            (sum, carry)
+        }
+        // majority(0, x, y) = x & y and majority(1, x, y) = x | y = (x ^ y) ^ (x & y)
+        (&[k], &[x, y]) => {
+            let x_xor_y = xor_bit(circuit, x, y);
+            let x_and_y = and_bit(circuit, x, y);
+            if k {
+                (
+                    not_bit(circuit, x_xor_y),
+                    xor_bit(circuit, x_xor_y, x_and_y),
+                )
+            } else {
+                (x_xor_y, x_and_y)
+            }
+        }
+        // carry = c ^ ((a ^ c) & (b ^ c))
+        _ => {
+            let a_xor_c = xor_bit(circuit, a, c);
+            let b_xor_c = xor_bit(circuit, b, c);
+            let sum = xor_bit(circuit, a, b_xor_c);
+            let t = and_bit(circuit, a_xor_c, b_xor_c);
+            (sum, xor_bit(circuit, c, t))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct U32([Bit; 32]);
 
 impl U32 {
     fn from_constant(n: u32) -> U32 {
-        let wires: Vec<WireId> = BigIntWires::new_constant(32, &BigUint::from(n))
-            .unwrap()
-            .bits;
-        U32(wires.try_into().unwrap())
+        U32(array::from_fn(|i| Bit::Const((n >> i) & 1 == 1)))
     }
 
     fn xor<C: CircuitContext>(circuit: &mut C, a: U32, b: U32) -> U32 {
-        let c: Vec<WireId> = (0..32)
-            .map(|i| {
-                let res = circuit.issue_wire();
-                circuit.add_gate(Gate::xor(a.0[i], b.0[i], res));
-                res
-            })
-            .collect();
-        U32(c.try_into().unwrap())
+        U32(array::from_fn(|i| xor_bit(circuit, a.0[i], b.0[i])))
     }
 
     fn rotate_right(value: U32, n: u32) -> U32 {
-        let mut result = [FALSE_WIRE; 32];
+        let mut result = [Bit::Const(false); 32];
         let shift = (n % 32) as usize;
 
         for (i, result_i) in result.iter_mut().enumerate() {
@@ -64,17 +168,15 @@ impl U32 {
     }
 
     fn wrapping_add<C: CircuitContext>(circuit: &mut C, a: U32, b: U32) -> U32 {
-        let mut result = [FALSE_WIRE; 32];
-        let mut carry = FALSE_WIRE;
+        let mut result = [Bit::Const(false); 32];
+        let mut carry = Bit::Const(false);
 
         for (i, result_i) in result.iter_mut().take(31).enumerate() {
-            (*result_i, carry) = full_adder(circuit, a.0[i], b.0[i], carry);
+            (*result_i, carry) = add_bits(circuit, a.0[i], b.0[i], carry);
         }
         // The carry out of the top bit is discarded, so only its sum is computed
-        let axb = circuit.issue_wire();
-        circuit.add_gate(Gate::xor(a.0[31], b.0[31], axb));
-        result[31] = circuit.issue_wire();
-        circuit.add_gate(Gate::xor(axb, carry, result[31]));
+        let a_xor_b = xor_bit(circuit, a.0[31], b.0[31]);
+        result[31] = xor_bit(circuit, a_xor_b, carry);
 
         U32(result)
     }
@@ -135,7 +237,7 @@ fn round<C: CircuitContext>(circuit: &mut C, state: &mut [U32; 16], m: &[U32; 16
 }
 
 fn permute(m: &mut [U32; 16]) {
-    let mut permuted = [U32([FALSE_WIRE; 32]); 16];
+    let mut permuted = [U32([Bit::Const(false); 32]); 16];
     for i in 0..16 {
         permuted[i] = m[MSG_PERMUTATION[i] as usize];
     }
@@ -194,11 +296,14 @@ fn compress<C: CircuitContext>(
     array::from_fn(|i| U32::xor(circuit, state[i], state[i + 8]))
 }
 
-fn words_from_little_endian_bytes(bytes: &[U8], words: &mut [U32]) {
+/// A byte of the message or the block buffer, least significant bit first.
+type Byte = [Bit; 8];
+
+fn words_from_little_endian_bytes(bytes: &[Byte], words: &mut [U32]) {
     debug_assert_eq!(bytes.len(), 4 * words.len());
     for (four_bytes, word) in bytes.chunks_exact(4).zip(words) {
-        let wire_vec: Vec<WireId> = four_bytes.iter().flat_map(|x| x.0).collect();
-        let app_four_bytes: U32 = U32(wire_vec.try_into().unwrap());
+        let bit_vec: Vec<Bit> = four_bytes.iter().flatten().copied().collect();
+        let app_four_bytes: U32 = U32(bit_vec.try_into().unwrap());
         *word = app_four_bytes;
     }
 }
@@ -222,7 +327,7 @@ impl Output {
         );
         for (word_bits, out_word_bits) in words.iter().zip(out.chunks_mut(4)) {
             for (i, byte_bits) in out_word_bits.iter_mut().enumerate() {
-                *byte_bits = U8(word_bits.0[8 * i..(i + 1) * 8].try_into().unwrap());
+                *byte_bits = U8(array::from_fn(|j| word_bits.0[8 * i + j].to_wire()));
             }
         }
     }
@@ -231,7 +336,7 @@ impl Output {
 struct ChunkState {
     chaining_value: [U32; 8],
     chunk_counter: u64,
-    block: [U8; BLOCK_LEN],
+    block: [Byte; BLOCK_LEN],
     block_len: u8,
     blocks_compressed: u8,
     flags: u32,
@@ -242,7 +347,7 @@ impl ChunkState {
         Self {
             chaining_value: key_words,
             chunk_counter,
-            block: [U8([FALSE_WIRE; 8]); BLOCK_LEN],
+            block: [[Bit::Const(false); 8]; BLOCK_LEN],
             block_len: 0,
             blocks_compressed: 0,
             flags,
@@ -261,13 +366,13 @@ impl ChunkState {
         }
     }
 
-    fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[U8]) {
-        let zero_gate = FALSE_WIRE;
+    fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[Byte]) {
+        let zero_bit = Bit::Const(false);
         while !input.is_empty() {
             // If the block buffer is full, compress it and clear it. More
             // input is coming, so this compression is not CHUNK_END.
             if self.block_len as usize == BLOCK_LEN {
-                let mut block_words = [U32([zero_gate; 32]); 16];
+                let mut block_words = [U32([zero_bit; 32]); 16];
                 words_from_little_endian_bytes(&self.block, &mut block_words);
                 self.chaining_value = compress(
                     circuit,
@@ -278,7 +383,7 @@ impl ChunkState {
                     self.flags | self.start_flag(),
                 );
                 self.blocks_compressed += 1;
-                self.block = [U8([zero_gate; 8]); BLOCK_LEN];
+                self.block = [[zero_bit; 8]; BLOCK_LEN];
                 self.block_len = 0;
             }
 
@@ -292,8 +397,8 @@ impl ChunkState {
     }
 
     fn output(&self) -> Output {
-        let zero_gate = FALSE_WIRE;
-        let mut block_words = [U32([zero_gate; 32]); 16];
+        let zero_bit = Bit::Const(false);
+        let mut block_words = [U32([zero_bit; 32]); 16];
         words_from_little_endian_bytes(&self.block, &mut block_words);
 
         Output {
@@ -323,7 +428,7 @@ impl Hasher {
     }
 
     /// Add input to the hash state.
-    fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[U8]) {
+    fn update<C: CircuitContext>(&mut self, circuit: &mut C, mut input: &[Byte]) {
         while !input.is_empty() {
             // Compress input bytes into the current chunk state.
             let want = CHUNK_LEN - self.chunk_state.len();
@@ -348,8 +453,14 @@ pub fn blake3_hash<const N: usize, C: CircuitContext>(
         input_message_bytes.byte_arr.len() <= 1024,
         "This BLAKE3 implementation doesn't support messages longer than 1024 bytes"
     );
+    // Input wires are never folded, even when they are constants
+    let message: Vec<Byte> = input_message_bytes
+        .byte_arr
+        .iter()
+        .map(|byte| byte.0.map(Bit::Wire))
+        .collect();
     let mut hasher = Hasher::new();
-    hasher.update(circuit, &input_message_bytes.byte_arr);
+    hasher.update(circuit, &message);
 
     let mut hash = [U8([FALSE_WIRE; 8]); OUT_LEN];
     hasher.finalize(circuit, &mut hash);
@@ -646,10 +757,10 @@ mod gate_cost {
         ]
         .map(|c| (c.and, c.total, c.unread));
         let expected = [
-            (10416, 60176, 0),
-            (10416, 60176, 0),
-            (20832, 120352, 0),
-            (166656, 962816, 0),
+            (8762, 50323, 0),
+            (10281, 57868, 0),
+            (17436, 100013, 0),
+            (166431, 939943, 0),
         ];
         assert_eq!(costs, expected);
     }
