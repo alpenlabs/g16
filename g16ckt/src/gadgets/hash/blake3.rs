@@ -528,8 +528,7 @@ mod test {
 
         let calc_hash =
             CircuitBuilder::streaming_execute::<_, _, HashOutput>(inputs, 10_000, |ctx, input| {
-                let r = blake3_hash(ctx, *input);
-                r
+                blake3_hash(ctx, *input)
             });
 
         assert_eq!(calc_hash.output_value.value, *ref_hash);
@@ -615,10 +614,7 @@ mod test {
             let calc_hash = CircuitBuilder::streaming_execute::<_, _, HashOutput>(
                 inputs,
                 10_000,
-                |ctx, input| {
-                    let r = blake3_hash(ctx, *input);
-                    r
-                },
+                |ctx, input| blake3_hash(ctx, *input),
             );
 
             let calc_hash = bytes_to_hex(calc_hash.output_value.value);
