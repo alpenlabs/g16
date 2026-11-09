@@ -1333,8 +1333,7 @@ mod tests {
     fn convert_hash_to_bigint(raw_public_input_hash: blake3::Hash) -> ark_bn254::Fr {
         let mut raw_public_input_hash = *raw_public_input_hash.as_bytes();
         raw_public_input_hash[0] &= 0b00011111; // mask top 3 bits to fit within scalar field
-        let c_val = ark_bn254::Fr::from_be_bytes_mod_order(&raw_public_input_hash);
-        c_val
+        ark_bn254::Fr::from_be_bytes_mod_order(&raw_public_input_hash)
     }
 
     // verify groth16 proof end-to-end
@@ -1369,9 +1368,9 @@ mod tests {
         let ark_proof_bits: Vec<bool> = {
             let mut proof_bytes = Vec::new();
             ark_groth16::Proof::<Bn254> {
-                a: proof.a.into(),
-                b: proof.b.into(),
-                c: proof.c.into(),
+                a: proof.a,
+                b: proof.b,
+                c: proof.c,
             }
             .serialize_compressed(&mut proof_bytes)
             .expect("serialize proof");
@@ -1394,7 +1393,7 @@ mod tests {
 
         let out: StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 160_000, |ctx, wires| {
-                let ok = groth16_verify_compressed_over_raw_public_input(ctx, &wires);
+                let ok = groth16_verify_compressed_over_raw_public_input(ctx, wires);
                 vec![ok]
             });
 
@@ -1469,7 +1468,7 @@ mod tests {
 
         let out: StreamingResult<_, _, Vec<bool>> =
             CircuitBuilder::streaming_execute(inputs, 160_000, |ctx, wires| {
-                let ok = groth16_verify_compressed_over_raw_public_input(ctx, &wires);
+                let ok = groth16_verify_compressed_over_raw_public_input(ctx, wires);
                 vec![ok]
             });
 
