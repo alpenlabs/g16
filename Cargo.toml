@@ -1,3 +1,10 @@
 [workspace]
 members = ["g16ckt", "g16gen", "verify", "g16check", "pipeline"]
 resolver = "3"
+
+[profile.flamegraph]
+inherits = "release"
+debug = true           # Essential for symbol resolution
+codegen-units = 1      # Better inlining visibility
+lto = "fat"           # Cross-crate optimization
+panic = "abort"       # Faster execution, smaller binary
