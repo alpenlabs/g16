@@ -470,7 +470,7 @@ pub fn blake3_hash<const N: usize, C: CircuitContext>(
 #[cfg(test)]
 mod test {
 
-    use std::{fs::File, io::BufReader, str::FromStr};
+    use std::{array, fs::File, io::BufReader, str::FromStr};
 
     use blake3::CHUNK_LEN;
     use rand::{Rng, SeedableRng};
@@ -478,9 +478,16 @@ mod test {
 
     use super::blake3_hash;
     use crate::{
-        circuit::CircuitBuilder,
-        gadgets::hash::blake3::{self as audited, HashOutput, InputMessage},
+        CircuitContext, Gate, WireId,
+        circuit::{CircuitBuilder, ExecuteMode, FALSE_WIRE, StreamingMode, TRUE_WIRE, WiresObject},
+        gadgets::hash::blake3::{
+            self as audited, HashOutput, HashOutputWires, InputMessage, InputMessageWires, U8,
+        },
     };
+
+    /// Signature shared by the optimized and audited gadgets, in an execution-pass streaming context.
+    type Hash<const N: usize> =
+        fn(&mut StreamingMode<ExecuteMode>, InputMessageWires<N>) -> HashOutputWires;
 
     fn validate_blake3_hash_for_input<const N: usize>(inputs: InputMessage<N>) {
         let mut ref_hasher = blake3::Hasher::new();
@@ -546,6 +553,75 @@ mod test {
             rng.fill(&mut byte_arr[..]);
             validate_blake3_hash_for_input(InputMessage { byte_arr });
         }
+    }
+
+    // StreamingMode builds a component's credit template from fresh, distinct, nonconstant mock
+    // inputs, then runs the component on its real inputs, and reuses the template for later calls
+    // of the same shape. The gadget must emit the same wires in every case, so here it runs twice
+    // inside components with one template: first on the input wires, then on a message of
+    // constant and repeated input wires. The output XORs the two hashes in the parent.
+    fn validate_in_component_with_constant_and_repeated_inputs<const N: usize>(hash: Hash<N>) {
+        let mut x = [0u8; N];
+        ChaCha20Rng::seed_from_u64(N as u64).fill(&mut x[..]);
+
+        // Byte i of the message is a repeated input byte, a constant, or one input bit repeated
+        let ref_message: [u8; N] = array::from_fn(|i| match i % 3 {
+            0 => x[(i / 3) % N],
+            1 => i as u8,
+            _ => 0u8.wrapping_sub((x[0] >> (i % 8)) & 1),
+        });
+        let ref_hash: [u8; 32] = array::from_fn(|i| {
+            blake3::hash(&x).as_bytes()[i] ^ blake3::hash(&ref_message).as_bytes()[i]
+        });
+
+        let calc_hash = CircuitBuilder::streaming_execute::<_, _, HashOutput>(
+            InputMessage { byte_arr: x },
+            10_000,
+            |ctx, input| {
+                let byte_arr = array::from_fn(|i| match i % 3 {
+                    0 => input.byte_arr[(i / 3) % N],
+                    1 => U8(array::from_fn(|j| {
+                        if (i >> j) & 1 == 1 {
+                            TRUE_WIRE
+                        } else {
+                            FALSE_WIRE
+                        }
+                    })),
+                    _ => U8([input.byte_arr[0].0[i % 8]; 8]),
+                });
+                let [hash_wires, ref_hash_wires] =
+                    [*input, InputMessageWires { byte_arr }].map(|message| {
+                        ctx.with_child(
+                            message,
+                            |child, message| hash(child, *message).to_wires_vec(),
+                            8 * 32,
+                        )
+                    });
+                let xor_wires: Vec<WireId> = hash_wires
+                    .into_iter()
+                    .zip(ref_hash_wires)
+                    .map(|(a, b)| {
+                        let res = ctx.issue_wire();
+                        ctx.add_gate(Gate::xor(a, b, res));
+                        res
+                    })
+                    .collect();
+                HashOutputWires {
+                    value: array::from_fn(|i| U8(xor_wires[8 * i..][..8].try_into().unwrap())),
+                }
+            },
+        );
+
+        assert_eq!(calc_hash.output_value.value, ref_hash);
+    }
+
+    // An empty message hashes to constant output wires, which the parent then reads
+    #[test]
+    fn test_in_component_with_constant_and_repeated_inputs() {
+        validate_in_component_with_constant_and_repeated_inputs::<0>(blake3_hash);
+        validate_in_component_with_constant_and_repeated_inputs::<36>(blake3_hash);
+        validate_in_component_with_constant_and_repeated_inputs::<65>(blake3_hash);
+        validate_in_component_with_constant_and_repeated_inputs::<36>(audited::blake3_hash);
     }
 
     #[test]
