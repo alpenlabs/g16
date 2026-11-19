@@ -3,7 +3,7 @@ use std::num::NonZero;
 use g16ckt::{
     Gate as SourceGate, GateType, WireId, circuit::CircuitMode, storage::Credits as SourceCredits,
 };
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Debug)]
 pub struct FanoutCounter {
@@ -165,7 +165,14 @@ impl CircuitMode for FanoutCounter {
 
 impl FanoutCounter {
     pub fn new(primary_inputs: usize) -> Self {
-        let pb = ProgressBar::no_length();
+        // The total gate count is only known once this pass finishes, so show
+        // a spinner with the running count instead of a bar.
+        let pb = ProgressBar::no_length().with_style(
+            ProgressStyle::with_template(
+                "{spinner} [{elapsed_precise}] {human_pos} gates ({per_sec:0})",
+            )
+            .unwrap(),
+        );
         let mut mode = Self {
             fanout: Some(Vec::new()),
             next_normalized_id: 0,
@@ -197,6 +204,19 @@ impl FanoutCounter {
     }
 
     pub fn finish(&mut self) -> Vec<u32> {
+        self.spinner.finish();
         self.fanout.take().unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spinner_template_parses() {
+        // `new` panics if the progress template is invalid.
+        let mut counter = FanoutCounter::new(0);
+        assert!(counter.finish().is_empty());
     }
 }
