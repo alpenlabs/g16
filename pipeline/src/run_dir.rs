@@ -5,10 +5,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chrono::Local;
+use chrono::{DateTime, Local};
 
 pub struct RunDir {
     pub root: PathBuf,
+    pub started: DateTime<Local>,
 }
 
 impl RunDir {
@@ -16,10 +17,11 @@ impl RunDir {
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create runs-dir parent {:?}", parent))?;
 
-        let stamp = Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let started = Local::now();
+        let stamp = started.format("%Y%m%d-%H%M%S").to_string();
         let root = parent.join(format!("run-{stamp}"));
         fs::create_dir(&root).with_context(|| format!("failed to create run dir {:?}", root))?;
-        Ok(Self { root })
+        Ok(Self { root, started })
     }
 
     pub fn compile_time_json(&self) -> PathBuf {
@@ -59,7 +61,7 @@ pub fn write_summary(
     out.push_str(&format!("source: {}\n", source));
     out.push_str(&format!(
         "started: {}\n",
-        Local::now().format("%Y-%m-%d %H:%M:%S %z")
+        run.started.format("%Y-%m-%d %H:%M:%S %z")
     ));
     out.push_str(&format!("total: {:.2?}\n\n", total));
     out.push_str("steps:\n");
@@ -97,4 +99,30 @@ pub fn cleanup_intermediates(run: &RunDir, keep: bool) -> Result<()> {
     let _ = fs::remove_file(run.root.join("fanout.cache"));
     let _ = fs::remove_file(run.root.join("outputs.cache"));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone;
+
+    use super::*;
+
+    #[test]
+    fn summary_reports_run_start_time() {
+        let parent = std::env::temp_dir().join(format!("g16-pipeline-test-{}", std::process::id()));
+        fs::create_dir_all(&parent).unwrap();
+        let run = RunDir {
+            root: parent.clone(),
+            started: Local.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap(),
+        };
+
+        write_summary(&run, "vk.bin", &[], Duration::from_secs(60), true).unwrap();
+        let summary = fs::read_to_string(run.summary_path()).unwrap();
+        fs::remove_dir_all(&parent).unwrap();
+
+        assert!(
+            summary.contains("started: 2026-01-02 03:04:05 "),
+            "unexpected summary:\n{summary}"
+        );
+    }
 }
