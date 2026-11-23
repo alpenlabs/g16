@@ -1091,7 +1091,7 @@ dependencies = [
  "bitvec",
  "blake3",
  "circuit_component_macro",
- "digest 0.10.7",
+ "digest 0.11.3",
  "itertools 0.14.0",
  "num-bigint 0.4.6",
  "num-traits",
