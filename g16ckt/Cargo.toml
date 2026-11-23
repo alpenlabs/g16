@@ -34,7 +34,7 @@ bitvec = "1.0.1"
 blake3 = { version = "1.6.1", features = ["traits-preview"] }
 circuit_component_macro = { path = "../circuit_component_macro" }
 digest = "0.10"
-itertools = "0.14.0"
+itertools = "0.15.0"
 tracing = { version = "0.1.41", features = ["attributes", "std"] }
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt", "registry"] }
 tracing-log = "0.2"
