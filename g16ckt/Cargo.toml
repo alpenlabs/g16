@@ -21,7 +21,7 @@ tracing_max_level = ["tracing/max_level_trace", "tracing/release_max_level_info"
 tracing_scopes = []
 
 [dependencies]
-aes = "0.8"
+aes = "0.9"
 ark-bn254 = "0.5.0"
 ark-crypto-primitives = "0.5.0"
 ark-ec = "0.5.0"
