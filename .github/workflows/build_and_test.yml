@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Save build artifacts
         uses: Swatinem/rust-cache@v2
@@ -28,7 +28,7 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Restore cached build artifacts
         uses: Swatinem/rust-cache@v2
