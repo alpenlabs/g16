@@ -41,7 +41,7 @@ tracing-log = "0.2"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-traits = "0.2"
 rand = "0.8" # using old version for consistency with ark
-rand_chacha = "0.3" # using old version for consistency with ark
+rand_chacha = "0.10" # using old version for consistency with ark
 rayon = "1.10.0"
 slab = "0.4.11"
 thiserror = "2.0.12"
